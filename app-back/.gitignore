@@ -1,0 +1,16 @@
+# Ignorar archivos y carpetas comunes de Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.db
+*.sqlite3
+*.log
+.env
+venv/
+.env.*
+# Ignorar modelos grandes y datos temporales
+data/
+models/*.pt
+models/*.pth
+notebooks/.ipynb_checkpoints/
