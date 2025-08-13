@@ -11,6 +11,7 @@ venv/
 .env.*
 # Ignorar modelos grandes y datos temporales
 data/
+data/dataset-en-bruto/
 models/*.pt
 models/*.pth
 notebooks/.ipynb_checkpoints/
