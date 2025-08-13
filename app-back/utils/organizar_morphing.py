@@ -1,5 +1,6 @@
 import os
 import shutil
+import random
 from itertools import product
 
 # Configuración
@@ -23,20 +24,24 @@ def organizar_morphing(max_imgs=10):
         end_dir = os.path.join(par_dir, 'end')
         os.makedirs(start_dir, exist_ok=True)
         os.makedirs(end_dir, exist_ok=True)
-        # Copiar solo las primeras max_imgs imágenes de la letra inicial a start
+        # Copiar solo max_imgs imágenes aleatorias de la letra inicial a start
         origen_start = os.path.join(DICTADOLOGIA, letra1)
         if os.path.exists(origen_start):
-            imgs_start = sorted(os.listdir(origen_start))[:max_imgs]
+            imgs_start = os.listdir(origen_start)
+            if len(imgs_start) > max_imgs:
+                imgs_start = random.sample(imgs_start, max_imgs)
             for img in imgs_start:
                 ext = os.path.splitext(img)[1]
                 nuevo_nombre = f"{letra1.upper()}_{img}"
                 dest_path = os.path.join(start_dir, nuevo_nombre)
                 if not os.path.exists(dest_path):
                     shutil.copy2(os.path.join(origen_start, img), dest_path)
-        # Copiar solo las primeras max_imgs imágenes de la letra final a end
+        # Copiar solo max_imgs imágenes aleatorias de la letra final a end
         origen_end = os.path.join(DICTADOLOGIA, letra2)
         if os.path.exists(origen_end):
-            imgs_end = sorted(os.listdir(origen_end))[:max_imgs]
+            imgs_end = os.listdir(origen_end)
+            if len(imgs_end) > max_imgs:
+                imgs_end = random.sample(imgs_end, max_imgs)
             for img in imgs_end:
                 ext = os.path.splitext(img)[1]
                 nuevo_nombre = f"{letra2.upper()}_{img}"
