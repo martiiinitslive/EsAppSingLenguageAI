@@ -1,8 +1,10 @@
-"""
-Script de entrenamiento para TextToDictaModel.
-Debes adaptar la carga de datos a tu dataset de imágenes de dictadología.
-"""
 
+# Script de entrenamiento para TextToDictaModel
+# Este script entrena un modelo generativo que convierte texto (letra) en una imagen de dictadología.
+# Debes adaptar la carga de datos a tu dataset de imágenes de dictadología.
+
+
+# Añade la carpeta raíz al path para importar módulos del proyecto
 import sys
 import os
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..')))
@@ -16,15 +18,17 @@ from PIL import Image
 import os
 from models.generator_model import TextToDictaModel
 
-# Configuración
-DATASET_DIR = 'data/dictadologia'  # Cambia esta ruta a tu dataset
-IMG_SIZE = 64
-BATCH_SIZE = 16
-EPOCHS = 10
-EMBEDDING_DIM = 32
-VOCAB = 'ABCDEFGHIJKLMNÑOPQRSTUVWXYZ'  # Incluye todas las letras de tu dataset
 
-# Verificar distribución de imágenes por carpeta
+# Configuración de hiperparámetros y rutas
+DATASET_DIR = 'data/dictadologia'  # Ruta al dataset de dictadología
+IMG_SIZE = 64  # Tamaño de las imágenes (ancho y alto)
+BATCH_SIZE = 16  # Número de muestras por batch
+EPOCHS = 10  # Número de épocas de entrenamiento
+EMBEDDING_DIM = 32  # Dimensión del embedding para cada letra
+VOCAB = 'ABCDEFGHIJKLMNÑOPQRSTUVWXYZ'  # Todas las letras presentes en el dataset
+
+
+# Verifica cuántas imágenes hay por cada letra en el dataset
 for letter in VOCAB:
     letter_dir = os.path.join(DATASET_DIR, letter)
     if os.path.exists(letter_dir):
@@ -34,18 +38,20 @@ for letter in VOCAB:
         print(f"{letter}: carpeta no existe")
 
 
-# Dataset personalizado
+
+# Dataset personalizado para dictadología
 class DictaDataset(Dataset):
     def __init__(self, data_dir, vocab, img_size):
-        self.data = []
+        self.data = []  # Lista de tuplas (índice de letra, ruta de imagen)
         self.vocab = vocab
         self.img_size = img_size
+        # Transformaciones: escala a gris, resize y tensor
         self.transform = transforms.Compose([
             transforms.Grayscale(),
             transforms.Resize((img_size, img_size)),
             transforms.ToTensor()
         ])
-        # Adaptado a la estructura: data/dictadologia/A/*.png, B/*.png, ...
+        # Recorre cada letra y añade sus imágenes
         for idx, letter in enumerate(vocab):
             letter_dir = os.path.join(data_dir, letter)
             if not os.path.exists(letter_dir):
@@ -59,13 +65,15 @@ class DictaDataset(Dataset):
         return len(self.data)
 
     def __getitem__(self, idx):
+        # Devuelve el índice de la letra y la imagen transformada
         label, img_path = self.data[idx]
         image = Image.open(img_path)
         image = self.transform(image)
         return torch.tensor([label]), image
 
 
-# Cargar datos y dividir en entrenamiento y validación (80/20)
+
+# Carga el dataset y lo divide en entrenamiento/validación (80/20)
 from torch.utils.data import random_split
 full_dataset = DictaDataset(DATASET_DIR, VOCAB, IMG_SIZE)
 train_size = int(0.8 * len(full_dataset))
@@ -74,30 +82,35 @@ train_dataset, val_dataset = random_split(full_dataset, [train_size, val_size])
 train_loader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True)
 val_loader = DataLoader(val_dataset, batch_size=BATCH_SIZE, shuffle=False)
 
-# Modelo
+
+# Instancia el modelo generador de dictadología
 model = TextToDictaModel(vocab_size=len(VOCAB), embedding_dim=EMBEDDING_DIM, img_size=IMG_SIZE)
-criterion = nn.MSELoss()
-optimizer = optim.Adam(model.parameters(), lr=0.001)
+criterion = nn.MSELoss()  # Pérdida de error cuadrático medio
+optimizer = optim.Adam(model.parameters(), lr=0.001)  # Optimizador Adam
 
 
 
-# Entrenamiento
-train_losses = []
-val_losses = []
+
+# Listas para guardar la evolución de las pérdidas
+train_losses = []  # Pérdida en entrenamiento
+val_losses = []    # Pérdida en validación
 
 import matplotlib.pyplot as plt
 
+# Bucle principal de entrenamiento
 for epoch in range(EPOCHS):
     model.train()
     running_loss = 0.0
+    # Entrenamiento por batch
     for i, (labels, images) in enumerate(train_loader):
+        print(f"Epoch {epoch+1}, Batch {i+1}/{len(train_loader)}")
         optimizer.zero_grad()
-        outputs = model(labels)
+        outputs = model(labels)  # Genera imagen a partir de la letra
         # Ajusta el shape para comparar correctamente
         if outputs.shape != images.shape:
             # Si outputs es [batch, 64, 64] y images es [batch, 1, 64, 64], elimina el canal
             images = images.squeeze(1)
-        loss = criterion(outputs, images)
+        loss = criterion(outputs, images)  # Calcula la pérdida
         loss.backward()
         optimizer.step()
         running_loss += loss.item()
@@ -105,7 +118,7 @@ for epoch in range(EPOCHS):
     train_losses.append(avg_train_loss)
     print(f'Epoch {epoch+1}/{EPOCHS}, Train Loss: {avg_train_loss:.4f}')
 
-    # Validación simple
+    # Validación por batch
     model.eval()
     val_loss = 0.0
     with torch.no_grad():
@@ -119,7 +132,7 @@ for epoch in range(EPOCHS):
     val_losses.append(avg_val_loss)
     print(f'Epoch {epoch+1}/{EPOCHS}, Val Loss: {avg_val_loss:.4f}')
 
-    # Guardar la gráfica de seguimiento en cada epoch
+    # Guardar y mostrar la gráfica de seguimiento en cada epoch
     plt.figure(figsize=(8,5))
     plt.plot(train_losses, label='Train Loss')
     plt.plot(val_losses, label='Val Loss')
@@ -134,22 +147,8 @@ for epoch in range(EPOCHS):
     plt.close()
 
 
-# Guardar modelo
-torch.save(model.state_dict(), 'text_to_dicta_model.pth')
+
+# Guardar el modelo entrenado al finalizar
+torch.save(model.state_dict(), 'text_to_dicta_model.pth')  # Pesos del modelo
 print('Entrenamiento finalizado y modelo guardado.')
 
-# ===================
-# SEGUIMIENTO DEL ENTRENAMIENTO (puedes comentar o quitar este bloque)
-# ===================
-import matplotlib.pyplot as plt
-plt.figure(figsize=(8,5))
-plt.plot(train_losses, label='Train Loss')
-plt.plot(val_losses, label='Val Loss')
-plt.xlabel('Epoch')
-plt.ylabel('Loss')
-plt.title('Evolución de la pérdida')
-plt.legend()
-plt.grid()
-plt.tight_layout()
-plt.show()
-# ===================
