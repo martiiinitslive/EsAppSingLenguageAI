@@ -14,5 +14,6 @@ data/
 data/dataset-en-bruto/
 models/*.pt
 models/*.pth
-models/train-validate/imagenes
+models/train-validate/imagenes/
 notebooks/.ipynb_checkpoints/
+models/train-validate/scripts_train_ttd/imagenes/

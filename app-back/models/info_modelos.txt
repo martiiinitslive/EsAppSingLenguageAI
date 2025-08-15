@@ -71,6 +71,17 @@ Una red neuronal es un modelo matemático inspirado en el cerebro humano, compue
 5. Combinaciones
 - En muchos modelos avanzados se combinan varias funciones de pérdida (por ejemplo, MSE + perceptual + adversarial) para equilibrar fidelidad de píxeles y calidad visual.
 
-# Recomendación
-- Para tareas donde la calidad visual es importante, prueba perceptual loss o una combinación de pérdidas.
-- Para tareas simples o prototipos, MSELoss o L1Loss pueden ser suficientes.
+¿Por qué el "val loss" sube y baja?
+El "val loss" (pérdida de validación) sube y baja porque el modelo está evaluando su capacidad de generalizar sobre datos que no ha visto durante el entrenamiento. Las razones principales de estas oscilaciones son:
+
+1. Tamaño de dataset de validación: Si el conjunto de validación es pequeño, pequeñas variaciones en los datos pueden causar fluctuaciones notables en la pérdida.
+
+2. Aleatoriedad en el entrenamiento: El orden de los datos, el inicializado de pesos y el uso de técnicas como dropout pueden hacer que el modelo tenga resultados variables en cada época.
+
+3. Modelo poco entrenado: En las primeras épocas, el modelo aún está aprendiendo y puede tener dificultades para generalizar, lo que se refleja en una pérdida de validación inestable.
+
+4. Overfitting parcial: Si el modelo empieza a memorizar el conjunto de entrenamiento, la pérdida de validación puede aumentar, pero si luego aprende patrones útiles, puede volver a bajar.
+
+5. Batching: Si la validación se hace por lotes, la composición de cada batch puede afectar la pérdida calculada.
+
+En resumen, estas subidas y bajadas son normales, especialmente en las primeras épocas o con datasets pequeños. Si la tendencia general es descendente y no hay aumentos bruscos sostenidos, el entrenamiento va bien. Si quieres menos oscilación, puedes aumentar el tamaño del conjunto de validación o usar técnicas como el promedio móvil para suavizar la curva.
