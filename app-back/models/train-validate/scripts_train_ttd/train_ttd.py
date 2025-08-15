@@ -15,20 +15,13 @@ from torchvision import models
 # Importación absoluta de los módulos
 import sys, os
 modelos_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..', 'models', 'modelos'))
-print("Modelos path:", modelos_path)
-print("Archivos en modelos:", os.listdir(modelos_path))
 sys.path.append(modelos_path)
 from ttd_model import TextToDictaModel
 from dataset_ttd import DictaDataset
 from losses_ttd import PerceptualLoss
+from config_ttd import IMG_SIZE, EMBEDDING_DIM, VOCAB, BATCH_SIZE, EPOCHS, LAMBDA_PERCEPTUAL
 
-# Configuración de hiperparámetros y rutas
 DATASET_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..', 'data', 'dictadologia'))  # Ruta absoluta al dataset
-IMG_SIZE = 128  # Tamaño de las imágenes (ancho y alto)
-BATCH_SIZE = 16  # Número de muestras por batch
-EPOCHS = 50  # Número de épocas de entrenamiento
-EMBEDDING_DIM = 256  # Dimensión del embedding para cada letra
-VOCAB = 'ABCDEFGHIJKLMNÑOPQRSTUVWXYZ'  # Todas las letras presentes en el dataset
 
 # Carga el dataset y lo divide en entrenamiento/validación (80/20)
 full_dataset = DictaDataset(DATASET_DIR, VOCAB, IMG_SIZE)
@@ -38,20 +31,17 @@ train_dataset, val_dataset = random_split(full_dataset, [train_size, val_size])
 train_loader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True)
 val_loader = DataLoader(val_dataset, batch_size=BATCH_SIZE, shuffle=False)
 
-# Instancia el modelo generador de dictadología
-# IMPORTANTE: El valor de embedding_dim debe coincidir con el modelo en ttd_model.py
 model = TextToDictaModel(vocab_size=len(VOCAB), embedding_dim=EMBEDDING_DIM, img_size=IMG_SIZE)
 criterion_mse = nn.MSELoss()  # Pérdida de error cuadrático medio
 criterion_perceptual = PerceptualLoss().to(torch.device('cuda' if torch.cuda.is_available() else 'cpu'))
-lambda_perceptual = 0.1  # Peso de la perceptual loss
 optimizer = optim.Adam(model.parameters(), lr=0.001)  # Optimizador Adam
+lambda_perceptual = LAMBDA_PERCEPTUAL
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 print("[INFO] Iniciando entrenamiento de TextToDictaModel...")
 print(f"[INFO] Entrenando en dispositivo: {device}")
 model.to(device)
 
-# Listas para guardar la evolución de las pérdidas
 train_losses = []  # Pérdida en entrenamiento
 val_losses = []    # Pérdida en validación
 

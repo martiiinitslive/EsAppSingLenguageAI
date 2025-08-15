@@ -21,7 +21,7 @@ class DictaDataset(Dataset):
         self.img_size = img_size
         # Transformaciones: escala a gris, resize y tensor normalizado a [-1, 1]
         self.transform = transforms.Compose([
-            transforms.Grayscale(),
+            # transforms.Grayscale(),
             transforms.Resize((img_size, img_size)),
             transforms.ToTensor(),
             transforms.Lambda(lambda x: x * 2 - 1)  # Normaliza a [-1, 1] para Tanh
