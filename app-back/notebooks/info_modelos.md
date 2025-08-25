@@ -37,6 +37,7 @@ Una red neuronal es un modelo matemático inspirado en el cerebro humano, compue
 4. **Mapa de características inicial:** Reshape a un tensor espacial.
 5. **Bloques deconvolucionales:** Expanden el mapa hasta el tamaño final de la imagen.
 6. **Capa final:** Conv2d + Tanh para obtener la imagen generada normalizada.
+7. **Normalización:** Es importante que las imágenes reales y generadas estén normalizadas en el mismo rango (por ejemplo, `[-1, 1]` si la salida del generador usa Tanh).
 
 ## Recomendaciones generales
 - Elige la arquitectura según el tipo de datos y el objetivo.
@@ -67,6 +68,7 @@ Una red neuronal es un modelo matemático inspirado en el cerebro humano, compue
 - Usada en redes generativas adversariales (GANs).
 - El generador intenta engañar a un discriminador, que aprende a distinguir imágenes reales de generadas.
 - Permite generar imágenes muy realistas, pero requiere una arquitectura GAN.
+- **Label Smoothing:** Técnica que consiste en usar etiquetas reales ligeramente menores a 1 (por ejemplo, entre 0.8 y 1.0) y etiquetas falsas ligeramente mayores a 0 (por ejemplo, entre 0.0 y 0.2) en el discriminador. Esto evita que el discriminador se vuelva demasiado seguro y ayuda al generador a recibir mejor feedback.
 
 5. Combinaciones
 - En muchos modelos avanzados se combinan varias funciones de pérdida (por ejemplo, MSE + perceptual + adversarial) para equilibrar fidelidad de píxeles y calidad visual.
