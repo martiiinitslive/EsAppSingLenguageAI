@@ -17,9 +17,9 @@ LEAKY_RELU_SLOPE = 0.2  # Parámetro 'negative_slope' para LeakyReLU
 DROPOUT_DISC = 0.1  # Dropout para el discriminador
 
 # Parámetros de entrenamiento
-BATCH_SIZE = 32  # Número de muestras procesadas en cada batch de entrenamiento
-EPOCHS = 50  # Número de épocas
-LAMBDA_PERCEPTUAL = 0.3  # Peso de la perceptual loss en la función de coste total
+BATCH_SIZE = 20  # Número de muestras procesadas en cada batch de entrenamiento
+EPOCHS = 10  # Número de épocas
+LAMBDA_PERCEPTUAL = 0.25  # Peso de la perceptual loss en la función de coste total
 LR_G = 0.0002  # Tasa de aprendizaje del generador
 LR_D = 0.0001  # Tasa de aprendizaje del discriminador
 DATASET_DIR = None  # Ruta al directorio del dataset

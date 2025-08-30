@@ -15,6 +15,7 @@ config_path = os.path.dirname(os.path.abspath(__file__))
 config_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'train-validate', 'scripts_train_ttd'))
 config_ttd_path = os.path.join(config_path, 'config_ttd.py')
 spec = importlib.util.spec_from_file_location("config_ttd", config_ttd_path)
+
 config_ttd = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(config_ttd)
 EMBEDDING_DIM = config_ttd.EMBEDDING_DIM
@@ -270,23 +271,25 @@ class DictaDiscriminator(nn.Module):
 #
 # 2. Proyección Inicial (Fully Connected)
 #    - Una capa lineal (nn.Linear) transforma el embedding en un vector largo.
-#    - Este vector se reestructura a un mapa de características inicial de tamaño 8x8x256 (8x8 espacial, 256 canales).
-#    - Se aplica una activación ReLU.
+#    - Este vector se reestructura a un mapa de características inicial de tamaño INIT_MAP_SIZE x INIT_MAP_SIZE x INIT_CHANNELS.
+#    - Se aplica una activación LeakyReLU y Dropout.
 #
-# 3. Bloques Deconvolucionales (ConvTranspose2d)
-#    - Cuatro bloques de transposed convolutions expanden el mapa de características:
-#      - 8x8x256 → 16x16x128 (ConvTranspose2d + BatchNorm + ReLU)
-#      - 16x16x128 → 32x32x64 (ConvTranspose2d + BatchNorm + ReLU)
-#      - 32x32x64 → 64x64x32 (ConvTranspose2d + BatchNorm + ReLU)
-#      - 64x64x32 → 128x128x16 (ConvTranspose2d + BatchNorm + ReLU)
-#    - Cada bloque aumenta el tamaño espacial y reduce el número de canales.
+# 3. Encoder convolucional
+#    - Tres bloques convolucionales (Conv2d + BatchNorm + LeakyReLU + Dropout) extraen características profundas.
+#    - Se usan canales configurables (512, 256, 128).
+#    - Se aplica Self-Attention tras el último bloque encoder.
 #
-# 4. Capa Final
-#    - Una convolución normal (nn.Conv2d) reduce los canales a 3 (imagen RGB), manteniendo el tamaño 128x128.
+# 4. Decoder con skip connections
+#    - Cinco bloques deconvolucionales (ConvTranspose2d + BatchNorm + LeakyReLU + Dropout).
+#    - En cada bloque se concatenan las características del encoder correspondientes (skip connections).
+#    - Se aplica Self-Attention en el último bloque del decoder si la resolución es baja.
+#
+# 5. Capa Final
+#    - Una convolución normal (nn.Conv2d) reduce los canales a 3 (imagen RGB), manteniendo el tamaño final.
 #    - Se aplica una activación Tanh para limitar la salida al rango [-1, 1], compatible con la normalización de tus datos.
 #
 # Resumen del flujo:
-# Índice de letra → Embedding → Mapa de características inicial → Expansión espacial con deconvoluciones → Imagen final 128x128x3 normalizada.
+# Índice de letra → Embedding → Mapa de características inicial → Encoder convolucional + Self-Attention → Decoder con skip connections + Self-Attention → Imagen final normalizada.
 # -------------------------------------------------------------
 #
 # Diagrama del flujo de datos:
@@ -297,25 +300,28 @@ class DictaDiscriminator(nn.Module):
 # [Embedding Layer]
 #       │
 #       ▼
-# [Linear (FC) → ReLU]
+# [Linear (FC) → LeakyReLU → Dropout]
 #       │
 #       ▼
-# [Reshape a mapa de características inicial: 8x8x256]
+# [Reshape a mapa de características inicial: INIT_MAP_SIZE x INIT_MAP_SIZE x INIT_CHANNELS]
 #       │
 #       ▼
-# [ConvTranspose2d: 8x8x256 → 16x16x128] → [BatchNorm] → [ReLU]
+# [Encoder: Conv2d → BatchNorm → LeakyReLU → Dropout] × 3
 #       │
 #       ▼
-# [ConvTranspose2d: 16x16x128 → 32x32x64] → [BatchNorm] → [ReLU]
+# [Self-Attention (encoder)]
 #       │
 #       ▼
-# [ConvTranspose2d: 32x32x64 → 64x64x32] → [BatchNorm] → [ReLU]
+# [Decoder: ConvTranspose2d → BatchNorm → LeakyReLU → Dropout + Skip Connections] × 5
 #       │
 #       ▼
-# [ConvTranspose2d: 64x64x32 → 128x128x16] → [BatchNorm] → [ReLU]
+# [Self-Attention (decoder, solo si resolución baja)]
 #       │
 #       ▼
-# [Conv2d: 128x128x16 → 128x128x3] → [Tanh]
+# [Conv2d: canales finales → 3 (RGB)]
 #       │
 #       ▼
-# [Imagen generada 128x128x3 (normalizada en [-1, 1])]
+# [Tanh]
+#       │
+#       ▼
+# [Imagen generada (normalizada en [-1, 1])]
