@@ -60,25 +60,22 @@ class TextToDictaModel(nn.Module):
         self.init_channels = INIT_CHANNELS
         self.leaky_relu_slope = LEAKY_RELU_SLOPE
 
-        # Encoder channels (más canales)
-        enc1_channels = 1024
-        enc2_channels = 512
-        enc3_channels = 256
-        enc4_channels = 128  # Nueva capa
+        # Encoder channels
+        enc1_channels = 512
+        enc2_channels = 256
+        enc3_channels = 128
 
-        # Decoder channels (más canales y capas)
-        dec1_in = enc4_channels
-        dec1_out = enc4_channels
-        dec2_in = dec1_out + enc4_channels
-        dec2_out = 128
-        dec3_in = dec2_out + enc3_channels
-        dec3_out = 64
-        dec4_in = dec3_out + enc2_channels
-        dec4_out = 32
-        dec5_in = dec4_out + enc1_channels
-        dec5_out = 16
-        dec6_in = dec5_out + self.init_channels  # Nueva capa
-        dec6_out = 8
+        # Decoder channels (computed from skip connections)
+        dec1_in = enc3_channels
+        dec1_out = enc3_channels
+        dec2_in = dec1_out + enc3_channels
+        dec2_out = 64
+        dec3_in = dec2_out + enc2_channels
+        dec3_out = 32
+        dec4_in = dec3_out + enc1_channels
+        dec4_out = 16
+        dec5_in = dec4_out + self.init_channels  # <-- este depende de INIT_CHANNELS
+        dec5_out = 8
 
         self.fc = nn.Sequential(
             nn.Linear(embedding_dim, self.init_channels * self.init_map_size * self.init_map_size),
@@ -86,7 +83,7 @@ class TextToDictaModel(nn.Module):
             nn.Dropout(DROPOUT_ENCODER)
         )
 
-        # Encoder (añade una capa)
+        # Encoder
         self.enc1 = nn.Sequential(
             nn.Conv2d(self.init_channels, enc1_channels, kernel_size=3, stride=1, padding=1),
             nn.BatchNorm2d(enc1_channels),
@@ -105,17 +102,11 @@ class TextToDictaModel(nn.Module):
             nn.LeakyReLU(self.leaky_relu_slope),
             nn.Dropout2d(DROPOUT_ENCODER)
         )
-        self.enc4 = nn.Sequential(  # Nueva capa
-            nn.Conv2d(enc3_channels, enc4_channels, kernel_size=3, stride=1, padding=1),
-            nn.BatchNorm2d(enc4_channels),
-            nn.LeakyReLU(self.leaky_relu_slope),
-            nn.Dropout2d(DROPOUT_ENCODER)
-        )
 
-        self.attn_enc = SelfAttention(enc4_channels)
-        self.attn_dec = SelfAttention(dec6_out)
+        self.attn_enc = SelfAttention(enc3_channels)
+        self.attn_dec = SelfAttention(dec5_out)  # <-- este depende de dec5_out (8 canales)
 
-        # Decoder (añade una capa)
+        # Decoder (channels now depend on config)
         self.dec1 = nn.Sequential(
             nn.ConvTranspose2d(dec1_in, dec1_out, kernel_size=4, stride=2, padding=1),
             nn.BatchNorm2d(dec1_out),
@@ -146,13 +137,7 @@ class TextToDictaModel(nn.Module):
             nn.LeakyReLU(self.leaky_relu_slope),
             nn.Dropout2d(DROPOUT_DECODER)
         )
-        self.dec6 = nn.Sequential(  # Nueva capa
-            nn.ConvTranspose2d(dec6_in, dec6_out, kernel_size=4, stride=2, padding=1),
-            nn.BatchNorm2d(dec6_out),
-            nn.LeakyReLU(self.leaky_relu_slope),
-            nn.Dropout2d(DROPOUT_DECODER)
-        )
-        self.final_conv = nn.Conv2d(dec6_out, 3, kernel_size=3, stride=1, padding=1)
+        self.final_conv = nn.Conv2d(dec5_out, 3, kernel_size=3, stride=1, padding=1)
         self.tanh = nn.Tanh()
 
         self._initialize_weights()
@@ -175,39 +160,34 @@ class TextToDictaModel(nn.Module):
         e1 = self.enc1(out)
         e2 = self.enc2(e1)
         e3 = self.enc3(e2)
-        e4 = self.enc4(e3)
 
         # Self-Attention solo tras el encoder
-        e4_attn = self.attn_enc(e4)
+        e3_attn = self.attn_enc(e3)
 
         # Decoder y skip connections
-        d1 = self.dec1(e4_attn)
-        e4_up = nn.functional.interpolate(e4_attn, size=d1.shape[2:], mode='bilinear', align_corners=False)
-        d1_cat = torch.cat([d1, e4_up], dim=1)
+        d1 = self.dec1(e3_attn)
+        e3_up = nn.functional.interpolate(e3_attn, size=d1.shape[2:], mode='bilinear', align_corners=False)
+        d1_cat = torch.cat([d1, e3_up], dim=1)
 
         d2 = self.dec2(d1_cat)
-        e3_up = nn.functional.interpolate(e3, size=d2.shape[2:], mode='nearest')
-        d2_cat = torch.cat([d2, e3_up], dim=1)
+        e2_up = nn.functional.interpolate(e2, size=d2.shape[2:], mode='nearest')
+        d2_cat = torch.cat([d2, e2_up], dim=1)
 
         d3 = self.dec3(d2_cat)
-        e2_up = nn.functional.interpolate(e2, size=d3.shape[2:], mode='nearest')
-        d3_cat = torch.cat([d3, e2_up], dim=1)
+        e1_up = nn.functional.interpolate(e1, size=d3.shape[2:], mode='nearest')
+        d3_cat = torch.cat([d3, e1_up], dim=1)
 
         d4 = self.dec4(d3_cat)
-        e1_up = nn.functional.interpolate(e1, size=d4.shape[2:], mode='nearest')
-        d4_cat = torch.cat([d4, e1_up], dim=1)
+        out_up = nn.functional.interpolate(out, size=d4.shape[2:], mode='nearest')
+        d4_cat = torch.cat([d4, out_up], dim=1)
 
         d5 = self.dec5(d4_cat)
-        out_up = nn.functional.interpolate(out, size=d5.shape[2:], mode='nearest')
-        d5_cat = torch.cat([d5, out_up], dim=1)
-
-        d6 = self.dec6(d5_cat)
         # Atención en el decoder solo si la resolución es baja
-        if d6.shape[2] * d6.shape[3] <= 4096:
-            d6_attn = self.attn_dec(d6)
+        if d5.shape[2] * d5.shape[3] <= 4096:  # 64x64 o menos
+            d5_attn = self.attn_dec(d5)
         else:
-            d6_attn = d6
-        imgs = self.final_conv(d6_attn)
+            d5_attn = d5
+        imgs = self.final_conv(d5_attn)
         imgs = self.tanh(imgs)
         return imgs
 class DictaDiscriminator(nn.Module):
@@ -221,39 +201,34 @@ class DictaDiscriminator(nn.Module):
         self.dropout_prob = DROPOUT_DISC
         self.leaky_relu_slope = LEAKY_RELU_SLOPE
 
-        # Bloques convolucionales descendentes (más canales y una capa extra)
+        # Bloques convolucionales descendentes
         self.conv1 = nn.Sequential(
-            nn.Conv2d(in_channels, 64, kernel_size=4, stride=2, padding=1),   # 256x256 -> 128x128
-            nn.BatchNorm2d(64),
+            nn.Conv2d(in_channels, 32, kernel_size=4, stride=2, padding=1),   # 256x256 -> 128x128
+            nn.BatchNorm2d(32),
             nn.LeakyReLU(self.leaky_relu_slope)
+            # Sin Dropout
         )
         self.conv2 = nn.Sequential(
-            nn.Conv2d(64, 128, kernel_size=4, stride=2, padding=1),            # 128x128 -> 64x64
-            nn.BatchNorm2d(128),
+            nn.Conv2d(32, 64, kernel_size=4, stride=2, padding=1),            # 128x128 -> 64x64
+            nn.BatchNorm2d(64),
             nn.LeakyReLU(self.leaky_relu_slope),
             nn.Dropout2d(self.dropout_prob * 0.25)
         )
         self.conv3 = nn.Sequential(
-            nn.Conv2d(128, 256, kernel_size=4, stride=2, padding=1),           # 64x64 -> 32x32
-            nn.BatchNorm2d(256),
+            nn.Conv2d(64, 128, kernel_size=4, stride=2, padding=1),           # 64x64 -> 32x32
+            nn.BatchNorm2d(128),
             nn.LeakyReLU(self.leaky_relu_slope),
             nn.Dropout2d(self.dropout_prob * 0.5)
         )
         self.conv4 = nn.Sequential(
-            nn.Conv2d(256, 512, kernel_size=4, stride=2, padding=1),           # 32x32 -> 16x16
-            nn.BatchNorm2d(512),
+            nn.Conv2d(128, 256, kernel_size=4, stride=2, padding=1),          # 32x32 -> 16x16
+            nn.BatchNorm2d(256),
             nn.LeakyReLU(self.leaky_relu_slope),
             nn.Dropout2d(self.dropout_prob * 0.75)
         )
         self.conv5 = nn.Sequential(
-            nn.Conv2d(512, 1024, kernel_size=4, stride=2, padding=1),          # 16x16 -> 8x8
-            nn.BatchNorm2d(1024),
-            nn.LeakyReLU(self.leaky_relu_slope),
-            nn.Dropout2d(self.dropout_prob)
-        )
-        self.conv6 = nn.Sequential(  # Nueva capa
-            nn.Conv2d(1024, 1024, kernel_size=4, stride=2, padding=1),         # 8x8 -> 4x4
-            nn.BatchNorm2d(1024),
+            nn.Conv2d(256, 512, kernel_size=4, stride=2, padding=1),          # 16x16 -> 8x8
+            nn.BatchNorm2d(512),
             nn.LeakyReLU(self.leaky_relu_slope),
             nn.Dropout2d(self.dropout_prob)
         )
@@ -261,9 +236,10 @@ class DictaDiscriminator(nn.Module):
         # Capa final: reduce a un solo valor (probabilidad)
         self.final = nn.Sequential(
             nn.Flatten(),
-            nn.Linear(1024 * 4 * 4, 1),
+            nn.Linear(512 * 8 * 8, 1),
             nn.Sigmoid()
         )
+
         self._initialize_weights()
 
     def _initialize_weights(self):
@@ -279,7 +255,6 @@ class DictaDiscriminator(nn.Module):
         x = self.conv3(x)
         x = self.conv4(x)
         x = self.conv5(x)
-        x = self.conv6(x)
         out = self.final(x)
         return out
 

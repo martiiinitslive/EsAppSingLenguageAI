@@ -6,6 +6,8 @@ import torch
 from torch.utils.data import Dataset
 from torchvision import transforms
 from PIL import Image
+import random
+import torchvision.transforms.functional as F
 
 class DictaDataset(Dataset):
     def __init__(self, data_dir, vocab, img_size):
@@ -19,14 +21,6 @@ class DictaDataset(Dataset):
         self.vocab = vocab
         self.img_size = img_size
 
-        # Definir transformaciones aquí
-        self.transform = transforms.Compose([
-            transforms.Resize((img_size, img_size)),
-            transforms.RandomHorizontalFlip(),
-            transforms.RandomRotation(10),
-            transforms.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2, hue=0.05),
-            transforms.ToTensor()
-        ])
         # Recorre cada letra y añade sus imágenes
         for idx, letter in enumerate(vocab):
             letter_dir = os.path.join(data_dir, letter)
@@ -41,14 +35,37 @@ class DictaDataset(Dataset):
     def __len__(self):
         return len(self.data)
 
+    def get_random_jitter_values(self):
+        brightness = random.uniform(0.7, 1.75)
+        contrast = random.uniform(0.8, 1.2)
+        saturation = random.uniform(0.8, 1.2)
+        hue = random.uniform(0, 0.4)
+        angle = random.uniform(-15, 15)
+        return brightness, contrast, saturation, hue, angle
+
     def __getitem__(self, idx):
         # Devuelve el índice de la letra y la imagen transformada
         label, img_path = self.data[idx]
         try:
             image = Image.open(img_path).convert("RGB")
-            image = self.transform(image)
+            # Resize, flip y rotate
+            transform_basic = transforms.Compose([
+                transforms.Resize((self.img_size, self.img_size)),
+                transforms.RandomHorizontalFlip(),
+                #transforms.RandomRotation(10),
+            ])
+            image = transform_basic(image)
+            # Aplica jitter manual y guarda los valores
+            brightness, contrast, saturation, hue, angle = self.get_random_jitter_values()
+            image = F.adjust_brightness(image, brightness)
+            image = F.adjust_contrast(image, contrast)
+            image = F.adjust_saturation(image, saturation)
+            image = F.adjust_hue(image, hue)
+            image = F.rotate(image, angle)
+            image = transforms.ToTensor()(image)
         except Exception as e:
             print(f"[ERROR] Fallo al cargar imagen: {img_path}. Error: {e}")
             # Devuelve un tensor de ceros si la imagen falla
             image = torch.zeros(3, self.img_size, self.img_size)
-        return torch.tensor(label), image
+            brightness, contrast, saturation, hue = 1.0, 1.0, 1.0, 0.0  # valores neutros si falla
+        return torch.tensor(label), image, (brightness, contrast, saturation, hue, angle)
