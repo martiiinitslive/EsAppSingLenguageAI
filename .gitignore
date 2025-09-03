@@ -23,7 +23,7 @@ __pycache__/
 **/models/
 **/notebooks/
 **/imagenes/
-app-back/utils/
+**/utils/
 
 
 # --- FRONTEND ---
