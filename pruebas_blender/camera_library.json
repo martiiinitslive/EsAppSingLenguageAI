@@ -19,15 +19,15 @@
         ]
       },
       "data": {
-        "lens_mm": 50.0,
+        "lens_mm": 65.0,
         "sensor_width": 36.0,
-        "sensor_height": 24.0,
-        "sensor_fit": "AUTO",
+        "sensor_height": 20.0,
+        "sensor_fit": "HORIZONTAL",
         "shift_x": 0.0,
         "shift_y": 0.0,
         "dof_focus_object": null,
         "dof_focus_distance": 10.0,
-        "aperture_fstop": 2.799999952316284
+        "aperture_fstop": 4.0
       },
       "scene_camera": "Camera",
       "frame": -21
