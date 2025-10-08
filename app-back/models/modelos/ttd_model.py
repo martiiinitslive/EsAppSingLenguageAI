@@ -26,38 +26,38 @@ LEAKY_RELU_SLOPE = config_ttd.LEAKY_RELU_SLOPE
 DROPOUT_ENCODER = config_ttd.DROPOUT_ENCODER
 DROPOUT_DECODER = config_ttd.DROPOUT_DECODER
 DROPOUT_DISC = config_ttd.DROPOUT_DISC
+NOISE_DIM = config_ttd.NOISE_DIM
 
-# Definición de la clase del modelo generador
 class SelfAttention(nn.Module):
     def __init__(self, in_dim):
         super(SelfAttention, self).__init__()
-        self.query_conv = nn.Conv2d(in_dim, in_dim // 8, kernel_size=1)
-        self.key_conv = nn.Conv2d(in_dim, in_dim // 8, kernel_size=1)
-        self.value_conv = nn.Conv2d(in_dim, in_dim, kernel_size=1)
-        self.gamma = nn.Parameter(torch.zeros(1))
+        self.query_conv = nn.Conv2d(in_dim, in_dim // 8, 1)
+        self.key_conv = nn.Conv2d(in_dim, in_dim // 8, 1)
+        self.value_conv = nn.Conv2d(in_dim, in_dim, 1)
+        self.gamma = nn.Parameter(torch.tensor(0.1))  # Inicialización mejorada
+        self.norm = nn.BatchNorm2d(in_dim)            # Normalización opcional
 
     def forward(self, x):
         batch_size, C, width, height = x.size()
-        # Solo aplica atención si el tamaño espacial es pequeño
-        if width * height > 1024:  # Por ejemplo, no aplicar si >32x32
-            return x
         proj_query = self.query_conv(x).view(batch_size, -1, width * height).permute(0, 2, 1)
         proj_key = self.key_conv(x).view(batch_size, -1, width * height)
         energy = torch.bmm(proj_query, proj_key)
         attention = torch.softmax(energy, dim=-1)
         proj_value = self.value_conv(x).view(batch_size, -1, width * height)
+
         out = torch.bmm(proj_value, attention.permute(0, 2, 1))
         out = out.view(batch_size, C, width, height)
         out = self.gamma * out + x
+        out = self.norm(out)  # Normalización opcional
         return out
-
 class TextToDictaModel(nn.Module):
-    def __init__(self, vocab_size, embedding_dim=EMBEDDING_DIM, img_size=IMG_SIZE):
+    def __init__(self, vocab_size, embedding_dim=EMBEDDING_DIM, img_size=IMG_SIZE, init_channels=INIT_CHANNELS, init_map_size=INIT_MAP_SIZE, noise_dim=NOISE_DIM):
         super(TextToDictaModel, self).__init__()
         self.embedding = nn.Embedding(vocab_size, embedding_dim)
+        self.noise_dim = noise_dim
         self.img_size = img_size
-        self.init_map_size = INIT_MAP_SIZE
-        self.init_channels = INIT_CHANNELS
+        self.init_map_size = init_map_size
+        self.init_channels = init_channels
         self.leaky_relu_slope = LEAKY_RELU_SLOPE
 
         # Encoder channels
@@ -78,7 +78,7 @@ class TextToDictaModel(nn.Module):
         dec5_out = 8
 
         self.fc = nn.Sequential(
-            nn.Linear(embedding_dim, self.init_channels * self.init_map_size * self.init_map_size),
+            nn.Linear(embedding_dim + noise_dim, self.init_channels * self.init_map_size * self.init_map_size),
             nn.LeakyReLU(self.leaky_relu_slope),
             nn.Dropout(DROPOUT_ENCODER)
         )
@@ -149,11 +149,14 @@ class TextToDictaModel(nn.Module):
                 if m.bias is not None:
                     nn.init.zeros_(m.bias)
 
-    def forward(self, x):
+    def forward(self, x, noise=None):
         emb = self.embedding(x)
         if emb.dim() > 2:
             emb = emb.squeeze(1)
-        out = self.fc(emb)
+        if noise is None:
+            noise = torch.randn(emb.size(0), self.noise_dim, device=emb.device)
+        emb_noise = torch.cat([emb, noise], dim=1)
+        out = self.fc(emb_noise)
         out = out.view(-1, self.init_channels, self.init_map_size, self.init_map_size)
 
         # Encoder
@@ -203,40 +206,45 @@ class DictaDiscriminator(nn.Module):
 
         # Bloques convolucionales descendentes
         self.conv1 = nn.Sequential(
-            nn.Conv2d(in_channels, 32, kernel_size=4, stride=2, padding=1),   # 256x256 -> 128x128
+            nn.Conv2d(in_channels, 32, kernel_size=4, stride=2, padding=1),
             nn.BatchNorm2d(32),
             nn.LeakyReLU(self.leaky_relu_slope)
-            # Sin Dropout
         )
         self.conv2 = nn.Sequential(
-            nn.Conv2d(32, 64, kernel_size=4, stride=2, padding=1),            # 128x128 -> 64x64
+            nn.Conv2d(32, 64, kernel_size=4, stride=2, padding=1),
             nn.BatchNorm2d(64),
             nn.LeakyReLU(self.leaky_relu_slope),
             nn.Dropout2d(self.dropout_prob * 0.25)
         )
         self.conv3 = nn.Sequential(
-            nn.Conv2d(64, 128, kernel_size=4, stride=2, padding=1),           # 64x64 -> 32x32
+            nn.Conv2d(64, 128, kernel_size=4, stride=2, padding=1),
             nn.BatchNorm2d(128),
             nn.LeakyReLU(self.leaky_relu_slope),
             nn.Dropout2d(self.dropout_prob * 0.5)
         )
         self.conv4 = nn.Sequential(
-            nn.Conv2d(128, 256, kernel_size=4, stride=2, padding=1),          # 32x32 -> 16x16
+            nn.Conv2d(128, 256, kernel_size=4, stride=2, padding=1),
             nn.BatchNorm2d(256),
             nn.LeakyReLU(self.leaky_relu_slope),
             nn.Dropout2d(self.dropout_prob * 0.75)
         )
         self.conv5 = nn.Sequential(
-            nn.Conv2d(256, 512, kernel_size=4, stride=2, padding=1),          # 16x16 -> 8x8
+            nn.Conv2d(256, 512, kernel_size=4, stride=2, padding=1),
             nn.BatchNorm2d(512),
             nn.LeakyReLU(self.leaky_relu_slope),
             nn.Dropout2d(self.dropout_prob)
         )
 
-        # Capa final: reduce a un solo valor (probabilidad)
+        # Calcula el tamaño de salida después de las convoluciones
+        def conv_out_size(size, kernel_size=4, stride=2, padding=1, n_layers=5):
+            for _ in range(n_layers):
+                size = (size + 2 * padding - kernel_size) // stride + 1
+            return size
+
+        final_spatial = conv_out_size(img_size)
         self.final = nn.Sequential(
             nn.Flatten(),
-            nn.Linear(512 * 8 * 8, 1),
+            nn.Linear(512 * final_spatial * final_spatial, 1),
             nn.Sigmoid()
         )
 
