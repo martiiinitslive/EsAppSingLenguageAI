@@ -25,6 +25,8 @@ __pycache__/
 **/imagenes/
 **/utils/
 
+# Ignorar la carpeta de pruebas de Blender
+**/pruebas_blender/
 
 # --- FRONTEND ---
 **/node_modules/
@@ -40,8 +42,5 @@ __pycache__/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
-
-# Ignorar carpeta de pruebas con Blender (añadido)
-**/pruebas_blender/**
 
 
