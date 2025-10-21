@@ -3,7 +3,7 @@
 
 # Ignorar archivo y carpetas de documentación
 codigo-de-ejemplo-redes/
-requirements.txt
+*.txt
 venv_run.bat
 
 # --- BACKEND ---
@@ -24,6 +24,7 @@ __pycache__/
 **/notebooks/
 **/imagenes/
 **/utils/
+**/descartado/
 
 # Ignorar la carpeta de pruebas de Blender
 **/blender/
