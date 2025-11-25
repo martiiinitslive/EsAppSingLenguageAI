@@ -1,0 +1,36 @@
+{
+  "meta": {
+    "created_by": "camera_library.py"
+  },
+  "cameras": {
+    "Cam_01": {
+      "object_name": "Camera",
+      "transform": {
+        "location": [
+          0.050861895084381104,
+          -3.294565200805664,
+          1.5293936729431152
+        ],
+        "rotation_mode": "XYZ",
+        "rotation_euler": [
+          1.5098919868469238,
+          0.006365207955241203,
+          0.013840876519680023
+        ]
+      },
+      "data": {
+        "lens_mm": 65.0,
+        "sensor_width": 36.0,
+        "sensor_height": 20.0,
+        "sensor_fit": "HORIZONTAL",
+        "shift_x": 0.0,
+        "shift_y": 0.0,
+        "dof_focus_object": null,
+        "dof_focus_distance": 10.0,
+        "aperture_fstop": 4.0
+      },
+      "scene_camera": "Camera",
+      "frame": -21
+    }
+  }
+}

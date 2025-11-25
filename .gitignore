@@ -17,7 +17,7 @@ __pycache__/
 .env
 .venv/
 .env.*
-**data/
+**/MezclaDatasets/  
 **/models/**/*.pt
 **/models/**/*.pth
 **/models/
@@ -25,9 +25,10 @@ __pycache__/
 **/imagenes/
 **/utils/
 **/descartado/
+**/.vscode/
 
 # Ignorar la carpeta de pruebas de Blender
-**/blender/
+#**/blender/
 
 # --- FRONTEND ---
 **/node_modules/
