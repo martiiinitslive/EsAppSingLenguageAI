@@ -26,9 +26,13 @@ __pycache__/
 **/utils/
 **/descartado/
 **/.vscode/
+**/output/
 
 # Ignorar la carpeta de pruebas de Blender
 #**/blender/
+
+# Ignorar salida específica de Blender usada por la herramienta local
+app-back/blender/output/
 
 # --- FRONTEND ---
 **/node_modules/

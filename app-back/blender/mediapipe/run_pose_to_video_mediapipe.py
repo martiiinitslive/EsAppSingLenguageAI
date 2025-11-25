@@ -838,10 +838,25 @@ def render_sequence_from_json(json_path, sequence, out_path=None, show=True, sav
                 total_frames += 1
                 pose_frame_count += 1
         else:
-            # Use a shorter duration for punctuation tokens (spaces, commas, periods)
-            # so they appear faster than a normal pose.
-            if isinstance(pose_name, str) and pose_name.upper() in ("SPACE", "PERIOD", "COMMA"):
-                duration_iter = PUNCT_FRAMES_PER_POSE
+            # Use a shorter duration for punctuation and special-character tokens
+            # so they appear faster than a normal pose. Criteria:
+            #  - explicit tokens 'SPACE','PERIOD','COMMA' -> fast
+            #  - if there is no pose entry (we generated visualization from a char)
+            #    and the character is a single non-alphanumeric (special char),
+            #    treat it as fast. Note: str.isalpha() returns True for accented
+            #    letters, so accented letters are treated as normal (NOT fast).
+            if isinstance(pose_name, str):
+                if pose_name.upper() in ("SPACE", "PERIOD", "COMMA"):
+                    duration_iter = PUNCT_FRAMES_PER_POSE
+                else:
+                    # If the renderer didn't find a pose entry in the JSON
+                    # (pose_entry is None) and this is a single character that
+                    # is NOT an alphabetic (including accented) nor a digit,
+                    # treat it as a special char and use the punct duration.
+                    if (pose_entry is None) and len(pose_name) == 1 and not (pose_name.isalpha() or pose_name.isdigit()):
+                        duration_iter = PUNCT_FRAMES_PER_POSE
+                    else:
+                        duration_iter = FRAMES_PER_POSE
             else:
                 duration_iter = FRAMES_PER_POSE
 
