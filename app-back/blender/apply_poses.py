@@ -27,8 +27,9 @@ def apply_pose_to_bones(armature, pose_data):
         if pb is None:
             continue
         
-        if 'rot_quat' in bone_data and bone_data['rot_quat']:
-            q = bone_data['rot_quat']
+        # Aceptar tanto rot_quat (legado) como rotation_quat (output conversor nuevo)
+        q = bone_data.get('rot_quat') or bone_data.get('rotation_quat')
+        if q:
             pb.rotation_mode = 'QUATERNION'
             pb.rotation_quaternion = Quaternion((q[0], q[1], q[2], q[3]))
             applied_count += 1

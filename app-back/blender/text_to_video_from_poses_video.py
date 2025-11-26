@@ -16,7 +16,40 @@ import os
 import sys
 import json
 import argparse
-from mathutils import Vector, Quaternion
+try:
+    import numpy as np
+except ImportError:  # pragma: no cover - Blender env should provide numpy
+    np = None  # type: ignore[assignment]
+from mathutils import Vector, Quaternion, Matrix  # type: ignore[import]
+
+# ============================================================================
+# MAPEO: MediaPipe 21 Landmarks → MakeHuman Hand Bones
+# ============================================================================
+
+MEDIAPIPE_TO_MAKEHUMAN = {
+    'finger1-1.L': (0, 1),
+    'finger1-2.L': (1, 2),
+    'finger1-3.L': (2, 3),
+    'finger2-1.L': (0, 5),
+    'finger2-2.L': (5, 6),
+    'finger2-3.L': (6, 7),
+    'finger3-1.L': (0, 9),
+    'finger3-2.L': (9, 10),
+    'finger3-3.L': (10, 11),
+    'finger4-1.L': (0, 13),
+    'finger4-2.L': (13, 14),
+    'finger4-3.L': (14, 15),
+    'finger5-1.L': (0, 17),
+    'finger5-2.L': (17, 18),
+    'finger5-3.L': (18, 19),
+}
+
+REFERENCE_PAIRS = [
+    ((0, 5), 'finger2-1.L'),
+    ((0, 9), 'finger3-1.L'),
+    ((0, 13), 'finger4-1.L'),
+    ((0, 17), 'finger5-1.L'),
+]
 
 # ============================================================================
 # UTILIDADES
@@ -135,6 +168,110 @@ def reset_pose(arm):
             pb.matrix_basis.identity()
         except:
             pass
+
+def calculate_bone_rotation(pose_bone, start_world, end_world, armature):
+    """Calcula la rotación local necesaria para alinear el hueso con la dirección target."""
+    target_direction_world = (end_world - start_world)
+
+    if target_direction_world.length < 1e-6:
+        return Quaternion()
+
+    target_direction_world.normalize()
+
+    if pose_bone.parent:
+        parent_matrix_world = armature.matrix_world @ pose_bone.parent.matrix
+        parent_rotation_world = parent_matrix_world.to_quaternion()
+    else:
+        parent_rotation_world = armature.matrix_world.to_quaternion()
+
+    target_direction_local = parent_rotation_world.inverted() @ target_direction_world
+
+    bone = pose_bone.bone
+    bone_rest_vector = bone.tail_local - bone.head_local
+
+    if bone_rest_vector.length < 1e-6:
+        return Quaternion()
+
+    bone_rest_direction = bone_rest_vector.normalized()
+    rotation_local = bone_rest_direction.rotation_difference(target_direction_local)
+    return rotation_local
+
+def apply_landmarks_pose(arm, landmarks):
+    """Aplica rotaciones calculadas desde landmarks Blender-space (lista de 21 vectores)."""
+    if len(landmarks) != 21:
+        return []
+
+    applied = []
+    vectors = [Vector(lm) for lm in landmarks]
+    transform, _scale = _transform_mp_to_rig(vectors, arm)
+
+    for bone_name, (start_idx, end_idx) in MEDIAPIPE_TO_MAKEHUMAN.items():
+        pose_bone = arm.pose.bones.get(bone_name)
+        if not pose_bone:
+            log(f"⚠️ Hueso no encontrado para landmarks: {bone_name}")
+            continue
+
+        start_vec = vectors[end_idx] - vectors[start_idx]
+        if start_vec.length < 1e-6:
+            continue
+        target_vec = transform @ start_vec
+        if target_vec.length < 1e-6:
+            continue
+        target_vec.normalize()
+
+        bone_rest_vector = pose_bone.bone.tail_local - pose_bone.bone.head_local
+        if bone_rest_vector.length < 1e-6:
+            continue
+        rest_dir = bone_rest_vector.normalized()
+        rotation_local = rest_dir.rotation_difference(target_vec)
+
+        pose_bone.rotation_mode = 'QUATERNION'
+        pose_bone.rotation_quaternion = rotation_local
+        applied.append(bone_name)
+
+    bpy.context.view_layer.update()
+    return applied
+
+def _transform_mp_to_rig(landmarks, arm):
+    if np is None:
+        return Matrix.Identity(3), 1.0
+
+    mp_vectors = []
+    rig_vectors = []
+
+    for (start_idx, end_idx), bone_name in REFERENCE_PAIRS:
+        if start_idx >= len(landmarks) or end_idx >= len(landmarks):
+            continue
+        mp_vec = Vector(landmarks[end_idx]) - Vector(landmarks[start_idx])
+        if mp_vec.length < 1e-6:
+            continue
+        bone_data = arm.data.bones.get(bone_name)
+        if not bone_data:
+            continue
+        rig_vec = bone_data.tail_local - bone_data.head_local
+        if rig_vec.length < 1e-6:
+            continue
+        mp_vectors.append(np.array(mp_vec, dtype=float))
+        rig_vectors.append(np.array(rig_vec, dtype=float))
+
+    if len(mp_vectors) < 2:
+        return Matrix.Identity(3), 1.0
+
+    A = np.stack(mp_vectors, axis=0)
+    B = np.stack(rig_vectors, axis=0)
+
+    cov = A.T @ B
+    U, S, Vt = np.linalg.svd(cov)
+    R = Vt.T @ U.T
+    if np.linalg.det(R) < 0:
+        Vt[-1, :] *= -1
+        R = Vt.T @ U.T
+
+    scale_den = np.sum(A * A)
+    scale = float(np.sum(S) / scale_den) if scale_den > 1e-8 else 1.0
+
+    matrix_rows = tuple(tuple(float(val) for val in row) for row in R)
+    return Matrix(matrix_rows), scale
 
 def apply_quat_to_bone(pose_bone, quat_w_x_y_z):
     """Aplica un quaternion a un hueso."""
@@ -303,16 +440,19 @@ def main():
 
         # Aplicar frame-by-frame
         for frame_idx, frame_data in enumerate(frames_list):
+            landmarks_blender = frame_data.get("landmarks_blender")
             bones_dict = frame_data.get("bones", {})
 
-            if not bones_dict:
+            if not landmarks_blender and not bones_dict:
                 continue
 
-            # Resetear y aplicar
             reset_pose(arm)
-            applied = apply_pose_dict(arm, bones_dict)
 
-            # Insertar keyframes
+            if landmarks_blender and len(landmarks_blender) == 21:
+                applied = apply_landmarks_pose(arm, landmarks_blender)
+            else:
+                applied = apply_pose_dict(arm, bones_dict)
+
             insert_keyframes(arm, applied, frame)
 
             frame += 1

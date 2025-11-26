@@ -44,7 +44,7 @@ POSES_CONVERTED_JSON = str(BASE_DIR / "mediapipe" / "poses_converted_video.json"
 
 # Configuración de renderizado
 ARMATURE_NAME = "Human.rig"
-POSES_TO_RENDER = "A,B,C"  # Lista de poses separadas por comas
+POSES_TO_RENDER = "L,U,C,I,A"  # Lista de poses separadas por comas
 FPS = 60
 WIDTH = 1920
 HEIGHT = 1080
@@ -99,8 +99,31 @@ def step_convert_mediapipe():
     # Si el JSON convertido ya existe, saltar la conversión para ahorrar tiempo
     out_p = Path(POSES_CONVERTED_JSON)
     if out_p.exists():
-        log(f"✓ Saltando conversión: '{POSES_CONVERTED_JSON}' ya existe")
-        return
+        regenerate = False
+        try:
+            with out_p.open("r", encoding="utf-8") as f:
+                existing = json.load(f)
+            poses = existing.get("poses", {}) if isinstance(existing, dict) else {}
+            # inspeccionar primer frame para ver si ya tiene landmarks_blender
+            missing_landmarks = True
+            for pose in poses.values():
+                frames = pose.get("frames", []) if isinstance(pose, dict) else []
+                for fr in frames:
+                    if isinstance(fr, dict) and fr.get("landmarks_blender"):
+                        missing_landmarks = False
+                        break
+                if not missing_landmarks:
+                    break
+            if not missing_landmarks:
+                log(f"✓ Saltando conversión: '{POSES_CONVERTED_JSON}' ya contiene landmarks")
+                return
+            regenerate = True
+        except Exception:
+            regenerate = True
+
+        if not regenerate:
+            return
+        log(f"ℹ️  Regenerando conversión: falta 'landmarks_blender' en {POSES_CONVERTED_JSON}")
 
     cmd = [sys.executable, SCRIPT_CONVERT]
 

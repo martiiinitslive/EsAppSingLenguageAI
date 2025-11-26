@@ -5,6 +5,7 @@ import argparse
 import subprocess
 import shutil
 from pathlib import Path
+import math
 try:
     import cv2
 except Exception:
@@ -49,7 +50,7 @@ SPEED_FACTOR = 1.0
 #   INPUT_TEXT = "HELLO WORLD"    # → ["H", "E", "L", "L", "O", "SPACE", "W", "O", "R", "L", "D"]
 #   INPUT_TEXT = "HI."            # → ["H", "I", "PERIOD"]
 #   INPUT_TEXT = None             # → Usa --text o --poses de línea de comandos
-INPUT_TEXT = "Estar en gRUpom ayuda a: (1) expresar sus sentiMIentos."  # Cambia a "HELLO", "HI THERE", etc. para usar texto fijo
+INPUT_TEXT = "lucia"  # Cambia a "HELLO", "HI THERE", etc. para usar texto fijo
 
 # ========== PARAMETRIZACIÓN DE VELOCIDAD ==========
 # Controla cuántos frames dura cada letra en el vídeo
@@ -100,6 +101,31 @@ HAND_CONNECTIONS = [
 
 # Grosor de las líneas que conectan landmarks (ajustable)
 CONNECTION_LINE_THICKNESS = 10
+
+# Human-style hand rendering configuration
+HAND_RENDER_STYLE = "realistic"  # options: "realistic", "wire"
+PALM_LOOP = [0, 5, 9, 13, 17]
+FINGER_CHAINS = [
+    [0, 1, 2, 3, 4],
+    [0, 5, 6, 7, 8],
+    [0, 9, 10, 11, 12],
+    [0, 13, 14, 15, 16],
+    [0, 17, 18, 19, 20],
+]
+# tonos de piel (BGR) — piel clara, cálida
+SKIN_BASE    = np.array([170, 190, 220], dtype=np.uint8)   # base (B, G, R)
+SKIN_LIGHT   = np.array([215, 230, 245], dtype=np.uint8)   # luces
+SKIN_SHADOW  = np.array([110, 130, 160], dtype=np.uint8)   # sombras
+NAIL_COLOR   = (210, 185, 170)
+
+# pequeño tinte warm para corregir azulados (BGR; puede ser negativo en B)
+HAND_TINT = np.array([-6.0, 4.0, 10.0], dtype=np.float32)
+
+# Outline color (used to draw hand contours)
+OUTLINE_COLOR = (48, 37, 32)
+
+def lerp(a: float, b: float, t: float) -> float:
+    return a + (b - a) * t
 
 def progress(s):
     print(f"[{time.strftime('%H:%M:%S')}][MP_VIS] {s}")
@@ -156,66 +182,174 @@ def _get_size(meta, args):
     return int(w), int(h)
 
 
-def _draw_landmarks_on_img(img, landmarks, color=(0,180,255), connections=None, radius=12):
-    """
-    Dibuja landmarks en la imagen con alta visibilidad estilo mano humana.
-    - Se dibuja un círculo interior de color brillante con borde oscuro
-    - Las líneas de conexión son visibles para mostrar estructura ósea
-    - Usa colores naturales: carne + puntos azul-verdosos como tendones
-    """
-    h, w = img.shape[:2]
+def _draw_hand_wireframe(img, pts, color=(0, 180, 255), connections=None, radius=12):
+    if connections:
+        for a, b in connections:
+            if a < len(pts) and b < len(pts):
+                cv2.line(
+                    img,
+                    (pts[a][0], pts[a][1]),
+                    (pts[b][0], pts[b][1]),
+                    (100, 120, 140),
+                    CONNECTION_LINE_THICKNESS,
+                    cv2.LINE_AA,
+                )
+    for (px, py, _z) in pts:
+        cv2.circle(img, (px, py), radius + 1, (20, 20, 20), -1, cv2.LINE_AA)
+        cv2.circle(img, (px, py), radius - 1, color, -1, cv2.LINE_AA)
+        cv2.circle(img, (px, py), max(2, radius // 3), (255, 255, 255), -1, cv2.LINE_AA)
+
+
+def _convert_landmarks_to_pixels(landmarks, img_w, img_h):
     pts = []
+    depths = []
     for lm in landmarks:
         if isinstance(lm, dict):
-            x = lm.get("x", lm.get("X", None))
-            y = lm.get("y", lm.get("Y", None))
-            z = lm.get("z", lm.get("Z", None))
-        elif isinstance(lm, (list, tuple)):
-            if len(lm) >= 2:
-                x, y = lm[0], lm[1]
-                z = lm[2] if len(lm) > 2 else 0
-            else:
-                continue
+            x = lm.get("x", lm.get("X"))
+            y = lm.get("y", lm.get("Y"))
+            z = lm.get("z", lm.get("Z", 0.0))
+        elif isinstance(lm, (list, tuple)) and len(lm) >= 2:
+            x, y = lm[0], lm[1]
+            z = lm[2] if len(lm) > 2 else 0.0
         else:
             continue
         if x is None or y is None:
             continue
-        px = int(round(float(x) * (w - 1)))
-        py = int(round(float(y) * (h - 1)))
-        pts.append((px, py, float(z) if z is not None else 0.0))
-    
-    # Dibujar conexiones (tendones/huesos) primero
-    if connections:
-        for a, b in connections:
-            if a < len(pts) and b < len(pts):
-                # Líneas oscuras para representar tendones
-                cv2.line(img, (pts[a][0], pts[a][1]), (pts[b][0], pts[b][1]), (100, 120, 140), CONNECTION_LINE_THICKNESS, cv2.LINE_AA)
-    
-    # Dibujar puntos de articulación (landmarks)
-    for (px, py, z) in pts:
-        # Borde oscuro exterior (sombra)
-        cv2.circle(img, (px, py), radius + 1, (20, 20, 20), -1, cv2.LINE_AA)
-        # Color principal (azul-verdoso como venas/tendones)
-        cv2.circle(img, (px, py), radius - 1, color, -1, cv2.LINE_AA)
-        # Brillo interior (punto blanco para efecto 3D)
-        cv2.circle(img, (px, py), max(2, radius // 3), (255, 255, 255), -1, cv2.LINE_AA)
+        px = int(round(float(x) * (img_w - 1)))
+        py = int(round(float(y) * (img_h - 1)))
+        pts.append((px, py, float(z)))
+        depths.append(float(z))
+    if len(pts) < 5:
+        return None, None
+    return pts, depths
+
+
+def _draw_hand_realistic(img, landmarks, handedness="Left", connections=None):
+    h, w = img.shape[:2]
+    pts, depths = _convert_landmarks_to_pixels(landmarks, w, h)
+    if pts is None:
+        _draw_hand_wireframe(img, [], connections=connections)
+        return
+    if len(pts) < 21:
+        _draw_hand_wireframe(img, pts, connections=connections)
+        return
+
+    layer = np.zeros_like(img, dtype=np.uint8)
+    palm_poly = np.array([pts[idx][:2] for idx in PALM_LOOP], dtype=np.int32)
+
+    if cv2.convexHull(palm_poly).shape[0] >= 3:
+        cv2.fillConvexPoly(layer, cv2.convexHull(palm_poly), SKIN_BASE.tolist(), lineType=cv2.LINE_AA)
+
+    img_scale = h / 1080.0
+    base_widths = [34, 28, 30, 32, 30]
+    widths = [w * 0.013 + bw * img_scale for bw in base_widths]
+
+    def _capsule(p0, p1, r0, r1, color):
+        vec = p1 - p0
+        length = max(float(np.linalg.norm(vec)), 1.0)
+        steps = max(int(math.ceil(length / 3.0)), 1)
+        for i in range(steps + 1):
+            t = i / steps
+            center = p0 * (1.0 - t) + p1 * t
+            radius = int(max(1.0, lerp(r0, r1, t)))
+            cv2.circle(layer, tuple(np.round(center).astype(int)), radius, color.tolist(), -1, cv2.LINE_AA)
+
+    pts_arr = np.array([p[:2] for p in pts], dtype=np.float32)
+
+    for chain_idx, chain in enumerate(FINGER_CHAINS):
+        width = widths[chain_idx]
+        for seg_idx in range(len(chain) - 1):
+            a = chain[seg_idx]
+            b = chain[seg_idx + 1]
+            start = pts_arr[a]
+            end = pts_arr[b]
+            r0 = width * (0.9 - 0.12 * seg_idx)
+            r1 = width * (0.75 - 0.15 * seg_idx)
+            _capsule(start, end, r0, r1, SKIN_BASE)
+        tip = tuple(np.round(pts_arr[chain[-1]]).astype(int))
+        cv2.circle(layer, tip, int(max(3, width * 0.4)), SKIN_LIGHT.tolist(), -1, cv2.LINE_AA)
+
+    knuckles = [2, 3, 6, 7, 10, 11, 14, 15, 18, 19]
+    for idx in knuckles:
+        center = tuple(np.round(pts_arr[idx]).astype(int))
+        cv2.circle(layer, center, int(8 * img_scale + 6), SKIN_LIGHT.tolist(), -1, cv2.LINE_AA)
+        cv2.circle(layer, center, int(8 * img_scale + 1), SKIN_BASE.tolist(), -1, cv2.LINE_AA)
+
+    for chain in FINGER_CHAINS[1:]:
+        tip = tuple(np.round(pts_arr[chain[-1]]).astype(int))
+        cv2.ellipse(layer, tip, (int(10 * img_scale + 6), int(6 * img_scale + 4)), 0, 0, 180, NAIL_COLOR, -1, cv2.LINE_AA)
+    thumb_tip = tuple(np.round(pts_arr[FINGER_CHAINS[0][-1]]).astype(int))
+    cv2.circle(layer, thumb_tip, int(8 * img_scale + 6), NAIL_COLOR, -1, cv2.LINE_AA)
+
+    if depths:
+        depth_arr = np.array(depths, dtype=np.float32)
+        depth_min = depth_arr.min()
+        depth_max = depth_arr.max()
+        if depth_max - depth_min > 1e-6:
+            z_norm = (depth_arr - depth_min) / (depth_max - depth_min)
+            wrist_depth = float(z_norm[0])
+            darkness = wrist_depth * 0.35 + 0.2
+        else:
+            darkness = 0.25
+    else:
+        darkness = 0.25
+    shadow = cv2.GaussianBlur(layer, (0, 0), sigmaX=8, sigmaY=8)
+    cv2.addWeighted(shadow, darkness, layer, 1.0 - darkness, 0, layer)
+
+    for chain in FINGER_CHAINS:
+        chain_pts = np.array([pts_arr[idx] for idx in chain], dtype=np.int32)
+        cv2.polylines(layer, [chain_pts], False, OUTLINE_COLOR, thickness=int(6 * img_scale + 3), lineType=cv2.LINE_AA)
+    cv2.polylines(layer, [palm_poly], True, OUTLINE_COLOR, thickness=int(7 * img_scale + 4), lineType=cv2.LINE_AA)
+
+    if isinstance(handedness, str) and handedness.lower().startswith("right"):
+        tint = np.array([10, 6, -4], dtype=np.float32)
+    else:
+        tint = np.array([0, 0, 0], dtype=np.float32)
+    layer = np.clip(layer.astype(np.float32) + HAND_TINT, 0.0, 255.0).astype(np.uint8)
+
+    alpha_mask = cv2.cvtColor(layer, cv2.COLOR_BGR2GRAY)
+    alpha_mask = cv2.GaussianBlur(alpha_mask, (0, 0), sigmaX=5)
+    alpha = cv2.normalize(alpha_mask.astype(np.float32), None, 0.0, 1.0, cv2.NORM_MINMAX)
+    alpha = alpha[..., None]
+    img[:] = (img.astype(np.float32) * (1.0 - alpha) + layer.astype(np.float32) * alpha).astype(np.uint8)
+
+
+def _draw_landmarks_on_img(img, landmarks, color=(0,180,255), connections=None, radius=12, style=None, handedness="Left"):
+    pts, _ = _convert_landmarks_to_pixels(landmarks, img.shape[1], img.shape[0])
+    if pts is None:
+        return
+    style = (style or HAND_RENDER_STYLE).lower()
+    if style == "realistic":
+        _draw_hand_realistic(img, landmarks, handedness=handedness, connections=connections)
+    else:
+        _draw_hand_wireframe(img, pts, color=color, connections=connections, radius=radius)
 
 
 def extract_frame_landmarks(frame_obj):
     if frame_obj is None:
         return None
     if isinstance(frame_obj, dict):
-        for k in ("multi_hand_landmarks", "hands", "hand_landmarks", "multi_handedness"):
-            if k in frame_obj and frame_obj[k]:
-                return frame_obj[k]
+        if frame_obj.get("multi_hand_landmarks"):
+            hands = []
+            labels = frame_obj.get("multi_handedness") or []
+            for idx, hand_data in enumerate(frame_obj["multi_hand_landmarks"]):
+                label = "Left"
+                if isinstance(labels, list) and idx < len(labels):
+                    entry = labels[idx]
+                    if isinstance(entry, dict):
+                        label = entry.get("label", label)
+                    else:
+                        label = str(entry)
+                hands.append({"landmarks": hand_data, "handedness": label})
+            return hands
         for k in ("landmarks", "landmark", "pose_landmarks", "pose_world_landmarks", "world_landmarks"):
             if k in frame_obj and frame_obj[k]:
                 return frame_obj[k]
         if "bones" in frame_obj and isinstance(frame_obj["bones"], dict):
             pts = []
-            for k, v in frame_obj["bones"].items():
-                if isinstance(v, dict) and "loc" in v:
-                    loc = v.get("loc")
+            for v in frame_obj["bones"].values():
+                if isinstance(v, dict):
+                    loc = v.get("loc") or v.get("position")
                     if loc and len(loc) >= 2:
                         pts.append({"x": loc[0], "y": loc[1], "z": loc[2] if len(loc) > 2 else 0.0})
             if pts:
@@ -708,7 +842,7 @@ def text_to_pose_sequence(text_input):
 
     return sequence
 
-def render_sequence_from_json(json_path, sequence, out_path=None, show=True, save=True, fps=None, width=None, height=None, speed_factor=None, apply_subtitles=True, soft_subtitles=False, subtitle_lang="eng", keep_sidecars=False):
+def render_sequence_from_json(json_path, sequence, out_path=None, show=True, save=True, fps=None, width=None, height=None, speed_factor=None, apply_subtitles=True, soft_subtitles=False, subtitle_lang="eng", keep_sidecars=False, hand_style=HAND_RENDER_STYLE):
     progress(f"Loading JSON: {json_path}")
     data = load_json(json_path)
     meta = data.get("meta", {}) if isinstance(data, dict) else {}
@@ -815,12 +949,38 @@ def render_sequence_from_json(json_path, sequence, out_path=None, show=True, sav
                 canvas = 255 * np.ones((h, w, 3), dtype="uint8")
 
                 ldata = extract_frame_landmarks(frame_obj)
-                if ldata:
-                    if isinstance(ldata, list) and len(ldata) > 0 and isinstance(ldata[0], list):
-                        for hand in ldata:
-                            _draw_landmarks_on_img(canvas, hand, color=(0,180,255), connections=HAND_CONNECTIONS, radius=12)
-                    else:
-                        _draw_landmarks_on_img(canvas, ldata, color=(0,180,255), connections=HAND_CONNECTIONS, radius=12)
+                hands_to_draw = []
+
+                if isinstance(ldata, list):
+                    first = ldata[0] if ldata else None
+                    if isinstance(first, dict) and "landmarks" in first:
+                        for entry in ldata:
+                            marks = entry.get("landmarks")
+                            label = entry.get("handedness", frame_obj.get("handedness", "Left") if isinstance(frame_obj, dict) else "Left")
+                            if marks:
+                                hands_to_draw.append((marks, label))
+                    elif len(ldata) > 0 and isinstance(first, (dict, list, tuple)) and not isinstance(first, str):
+                        if isinstance(first, (list, tuple)) and len(first) > 0 and isinstance(first[0], (dict, list, tuple)):
+                            for hand in ldata:
+                                hands_to_draw.append((hand, "Left"))
+                        else:
+                            hands_to_draw.append((ldata, frame_obj.get("handedness", "Left") if isinstance(frame_obj, dict) else "Left"))
+                elif isinstance(ldata, dict) and "landmarks" in ldata:
+                    hands_to_draw.append((ldata["landmarks"], ldata.get("handedness", "Left")))
+                elif ldata:
+                    hands_to_draw.append((ldata, "Left"))
+
+                if hands_to_draw:
+                    for marks, handed in hands_to_draw:
+                        _draw_landmarks_on_img(
+                            canvas,
+                            marks,
+                            color=(0, 180, 255),
+                            connections=HAND_CONNECTIONS,
+                            radius=12,
+                            style=hand_style,
+                            handedness=handed,
+                        )
                 else:
                     cv2.putText(canvas, "no landmarks", (40, h//2), cv2.FONT_HERSHEY_SIMPLEX, 1.2, (30,30,30), 2, cv2.LINE_AA)
 
@@ -963,6 +1123,7 @@ def main():
     ap.add_argument("--soft-subtitles", dest="soft_subtitles", action="store_true", help="Embed generated SRT as soft subtitles (mov_text) instead of burning ASS")
     ap.add_argument("--subtitle-lang", dest="subtitle_lang", default="eng", help="ISO-639-2 language code for embedded subtitle track (default: eng)")
     ap.add_argument("--keep-sidecars", dest="keep_sidecars", action="store_true", help="Keep generated .ass/.srt sidecar files after embedding/burning")
+    ap.add_argument("--hand-style", choices=["realistic", "wire"], default=HAND_RENDER_STYLE, help="Método de dibujo de mano (realistic o wire).")
     args = ap.parse_args()
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     
@@ -988,7 +1149,8 @@ def main():
     progress("Starting render...")
     out = render_sequence_from_json(args.json, seq, out_path=args.out, show=False, save=True,
                                    fps=args.fps, width=args.width, height=args.height, speed_factor=args.speed,
-                                   apply_subtitles=True, soft_subtitles=args.soft_subtitles, subtitle_lang=args.subtitle_lang, keep_sidecars=args.keep_sidecars)
+                                   apply_subtitles=True, soft_subtitles=args.soft_subtitles, subtitle_lang=args.subtitle_lang, keep_sidecars=args.keep_sidecars,
+                                   hand_style=args.hand_style)
     progress(f"Render finished. Output: {out}")
     return out
 

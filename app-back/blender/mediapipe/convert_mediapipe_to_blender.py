@@ -58,6 +58,8 @@ MEDIAPIPE_TO_MAKEHUMAN_BONES = {
 
 IN_PATH = Path(__file__).resolve().parent / "poses_mediapipe_video.json"
 OUT_PATH = Path(__file__).resolve().parent / "poses_converted_video.json"
+# Información del rig exportada con utils/info_pose_base.py (bone tails/heads en reposo)
+INFO_POSE_BASE = Path(__file__).resolve().parent.parent / "info_pose_base.json"
 
 # ============================================================================
 # FUNCIONES AUXILIARES
@@ -143,7 +145,34 @@ def quat_from_vectors(u, v):
 
     return [float(qw), float(qx), float(qy), float(qz)]
 
-def convert_frame_to_bones(frame_data, landmarks, denorm_config):
+
+def load_rest_vectors(info_path):
+    """
+    Lee info_pose_base.json y devuelve un dict nombre_hueso -> vector_tail-head normalizado (numpy).
+    Si hay cualquier problema, devuelve dict vacío.
+    """
+    try:
+        info = json.loads(Path(info_path).read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+
+    rest = {}
+    for arm in info.get("armatures", []):
+        # priorizar Human.rig si existe; si no, se toma el primero
+        if arm.get("object_name") not in ("Human.rig", None):
+            continue
+        for b in arm.get("bones", []):
+            head = np.array(b.get("head_local") or b.get("head") or [0.0, 0.0, 0.0], dtype=float)
+            tail = np.array(b.get("tail_local") or b.get("tail") or [0.0, 1.0, 0.0], dtype=float)
+            vec = tail - head
+            n = np.linalg.norm(vec)
+            if n > 1e-9:
+                rest[b.get("name")] = vec / n
+        # solo necesitamos un armature
+        break
+    return rest
+
+def convert_frame_to_bones(frame_data, landmarks, denorm_config, rest_vectors):
     """
     Convierte un frame con 21 landmarks a un diccionario de huesos con rotaciones.
 
@@ -176,21 +205,27 @@ def convert_frame_to_bones(frame_data, landmarks, denorm_config):
 
     pts = np.array(pts)
 
-    # Si los puntos parecen normalizados (~0..1), desnormalizar a metros
-    if np.nanmax(np.abs(pts)) <= 1.5:
-        # Heurística: si los valores están en [0, 1], son normalizados
-        hand_width_mm = float(denorm_config.get('hand_width_mm', 200))
-        scale_m = hand_width_mm / 1000.0  # convertir mm a metros
+    # Detectar si vienen world_landmarks (metros)
+    is_world = bool(frame_data.get('world_landmarks'))
 
-        # Centrar y voltear Y
-        px = (pts[:, 0] - 0.5) * scale_m
-        py = (0.5 - pts[:, 1]) * scale_m
-        pz = pts[:, 2] * scale_m
-
-        pts_m = np.column_stack([px, py, pz])
-    else:
-        # Ya están en metros (world_landmarks)
+    if is_world:
         pts_m = pts.copy()
+    else:
+        # Si los puntos parecen normalizados (~0..1), desnormalizar a metros
+        if np.nanmax(np.abs(pts)) <= 1.5:
+            # Heurística: si los valores están en [0, 1], son normalizados
+            hand_width_mm = float(denorm_config.get('hand_width_mm', 200))
+            scale_m = hand_width_mm / 1000.0  # convertir mm a metros
+
+            # Centrar y voltear Y
+            px = (pts[:, 0] - 0.5) * scale_m
+            py = (0.5 - pts[:, 1]) * scale_m
+            pz = pts[:, 2] * scale_m
+
+            pts_m = np.column_stack([px, py, pz])
+        else:
+            # Ya están en metros (world_landmarks)
+            pts_m = pts.copy()
 
     # Convertir a sistema de coordenadas de Blender
     pts_blender = np.array([mediapipe_to_blender_coords(p) for p in pts_m])
@@ -212,24 +247,20 @@ def convert_frame_to_bones(frame_data, landmarks, denorm_config):
         if np.linalg.norm(v_target) < 1e-9:
             continue
 
-        # Vector de referencia: asumir que los huesos en rest pose apuntan en +Y local
-        # (esto es una aproximación, ideal sería leer el rig real)
-        v_from = np.array([0.0, 1.0, 0.0], dtype=float)
+        # Vector de referencia: usar vector de reposo real si existe, sino +Y
+        v_from = np.array(rest_vectors.get(bone_name, [0.0, 1.0, 0.0]), dtype=float)
 
         # Calcular quaternion
         quat = quat_from_vectors(v_from, v_target)
 
-        bone_entry = {
-            'rotation_quat': quat,  # [w, x, y, z]
-            'position': pos_end.tolist()
-        }
-
-        bones[bone_name] = bone_entry
+        # Solo rotación: no mover huesos en espacio mundo para evitar desplazar la malla
+        bones[bone_name] = {'rotation_quat': quat}  # [w, x, y, z]
 
     frame_out['bones'] = bones
+    frame_out['landmarks_blender'] = pts_blender.tolist()
     return frame_out
 
-def convert_pose_entry(pose_entry, denorm_config):
+def convert_pose_entry(pose_entry, denorm_config, rest_vectors):
     """
     Convierte una entrada de pose (puede tener múltiples frames) a formato Blender.
 
@@ -255,7 +286,7 @@ def convert_pose_entry(pose_entry, denorm_config):
                 'bones': {}
             }
         else:
-            frame_out = convert_frame_to_bones(frame_in, landmarks, denorm_config)
+            frame_out = convert_frame_to_bones(frame_in, landmarks, denorm_config, rest_vectors)
 
         frames_out.append(frame_out)
 
@@ -298,6 +329,9 @@ def main():
 
     denorm_config = meta_out['denormalization']
 
+    # Cargar vectores de reposo del rig (si info_pose_base.json existe)
+    rest_vectors = load_rest_vectors(INFO_POSE_BASE)
+
     # Convertir poses
     out = {'meta': meta_out, 'poses': {}}
 
@@ -306,7 +340,7 @@ def main():
     for pose_name, pose_entry in poses_in.items():
         print(f"\n  Procesando pose: {pose_name}")
 
-        frames_converted = convert_pose_entry(pose_entry, denorm_config)
+        frames_converted = convert_pose_entry(pose_entry, denorm_config, rest_vectors)
 
         out['poses'][pose_name] = {
             'gesture_name': pose_entry.get('gesture_name', pose_name),
