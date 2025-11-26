@@ -1,0 +1,997 @@
+{
+  "meta": {
+    "note": "Auto-generated mapping suggestions. Fill `default_bone` values with exact bone names from your rig (info_pose_base.json).",
+    "hand_connections": [
+      [
+        0,
+        1
+      ],
+      [
+        1,
+        2
+      ],
+      [
+        2,
+        3
+      ],
+      [
+        3,
+        4
+      ],
+      [
+        0,
+        5
+      ],
+      [
+        5,
+        6
+      ],
+      [
+        6,
+        7
+      ],
+      [
+        7,
+        8
+      ],
+      [
+        5,
+        9
+      ],
+      [
+        9,
+        10
+      ],
+      [
+        10,
+        11
+      ],
+      [
+        11,
+        12
+      ],
+      [
+        9,
+        13
+      ],
+      [
+        13,
+        14
+      ],
+      [
+        14,
+        15
+      ],
+      [
+        15,
+        16
+      ],
+      [
+        13,
+        17
+      ],
+      [
+        17,
+        18
+      ],
+      [
+        18,
+        19
+      ],
+      [
+        19,
+        20
+      ],
+      [
+        0,
+        17
+      ],
+      [
+        0,
+        13
+      ],
+      [
+        0,
+        9
+      ],
+      [
+        0,
+        5
+      ]
+    ],
+    "joints_present_in_angles": []
+  },
+  "landmarks": {
+    "0": {
+      "suggested_bones": [
+        {
+          "name": "wrist.L",
+          "armature": "Human.rig",
+          "object": "Human.rig",
+          "score": 1.5
+        },
+        {
+          "name": "wrist.R",
+          "armature": "Human.rig",
+          "object": "Human.rig",
+          "score": 1.5
+        },
+        {
+          "name": "root",
+          "armature": "Human.rig",
+          "object": "Human.rig",
+          "score": 1.0
+        },
+        {
+          "name": "left_hand_ik",
+          "armature": "Human.rig",
+          "object": "Human.rig",
+          "score": 1.0
+        },
+        {
+          "name": "right_hand_ik",
+          "armature": "Human.rig",
+          "object": "Human.rig",
+          "score": 1.0
+        }
+      ],
+      "default_bone": "wrist.L",
+      "suggested_axis": "X",
+      "note": "Set default_bone to the exact bone name in the rig when you know it."
+    },
+    "1": {
+      "suggested_bones": [
+        {
+          "name": "wrist.L",
+          "armature": "Human.rig",
+          "object": "Human.rig",
+          "score": 1.5
+        },
+        {
+          "name": "wrist.R",
+          "armature": "Human.rig",
+          "object": "Human.rig",
+          "score": 1.5
+        },
+        {
+          "name": "root",
+          "armature": "Human.rig",
+          "object": "Human.rig",
+          "score": 1.0
+        },
+        {
+          "name": "left_hand_ik",
+          "armature": "Human.rig",
+          "object": "Human.rig",
+          "score": 1.0
+        },
+        {
+          "name": "right_hand_ik",
+          "armature": "Human.rig",
+          "object": "Human.rig",
+          "score": 1.0
+        }
+      ],
+      "default_bone": "left_finger1_grip",
+      "suggested_axis": "X",
+      "note": "Set default_bone to the exact bone name in the rig when you know it."
+    },
+    "2": {
+      "suggested_bones": [
+        {
+          "name": "root",
+          "armature": "Human.rig",
+          "object": "Human.rig",
+          "score": 0.0
+        },
+        {
+          "name": "pelvis.L",
+          "armature": "Human.rig",
+          "object": "Human.rig",
+          "score": 0.0
+        },
+        {
+          "name": "upperleg01.L",
+          "armature": "Human.rig",
+          "object": "Human.rig",
+          "score": 0.0
+        },
+        {
+          "name": "upperleg02.L",
+          "armature": "Human.rig",
+          "object": "Human.rig",
+          "score": 0.0
+        },
+        {
+          "name": "lowerleg01.L",
+          "armature": "Human.rig",
+          "object": "Human.rig",
+          "score": 0.0
+        },
+        {
+          "name": "lowerleg02.L",
+          "armature": "Human.rig",
+          "object": "Human.rig",
+          "score": 0.0
+        }
+      ],
+      "default_bone": "finger1-1.L",
+      "suggested_axis": "X",
+      "note": "Set default_bone to the exact bone name in the rig when you know it."
+    },
+    "3": {
+      "suggested_bones": [
+        {
+          "name": "root",
+          "armature": "Human.rig",
+          "object": "Human.rig",
+          "score": 0.0
+        },
+        {
+          "name": "pelvis.L",
+          "armature": "Human.rig",
+          "object": "Human.rig",
+          "score": 0.0
+        },
+        {
+          "name": "upperleg01.L",
+          "armature": "Human.rig",
+          "object": "Human.rig",
+          "score": 0.0
+        },
+        {
+          "name": "upperleg02.L",
+          "armature": "Human.rig",
+          "object": "Human.rig",
+          "score": 0.0
+        },
+        {
+          "name": "lowerleg01.L",
+          "armature": "Human.rig",
+          "object": "Human.rig",
+          "score": 0.0
+        },
+        {
+          "name": "lowerleg02.L",
+          "armature": "Human.rig",
+          "object": "Human.rig",
+          "score": 0.0
+        }
+      ],
+      "default_bone": "finger1-2.L",
+      "suggested_axis": "X",
+      "note": "Set default_bone to the exact bone name in the rig when you know it."
+    },
+    "4": {
+      "suggested_bones": [
+        {
+          "name": "root",
+          "armature": "Human.rig",
+          "object": "Human.rig",
+          "score": 0.0
+        },
+        {
+          "name": "pelvis.L",
+          "armature": "Human.rig",
+          "object": "Human.rig",
+          "score": 0.0
+        },
+        {
+          "name": "upperleg01.L",
+          "armature": "Human.rig",
+          "object": "Human.rig",
+          "score": 0.0
+        },
+        {
+          "name": "upperleg02.L",
+          "armature": "Human.rig",
+          "object": "Human.rig",
+          "score": 0.0
+        },
+        {
+          "name": "lowerleg01.L",
+          "armature": "Human.rig",
+          "object": "Human.rig",
+          "score": 0.0
+        },
+        {
+          "name": "lowerleg02.L",
+          "armature": "Human.rig",
+          "object": "Human.rig",
+          "score": 0.0
+        }
+      ],
+      "default_bone": "finger1-3.L",
+      "suggested_axis": "X",
+      "note": "Set default_bone to the exact bone name in the rig when you know it."
+    },
+    "5": {
+      "suggested_bones": [
+        {
+          "name": "root",
+          "armature": "Human.rig",
+          "object": "Human.rig",
+          "score": 0.0
+        },
+        {
+          "name": "pelvis.L",
+          "armature": "Human.rig",
+          "object": "Human.rig",
+          "score": 0.0
+        },
+        {
+          "name": "upperleg01.L",
+          "armature": "Human.rig",
+          "object": "Human.rig",
+          "score": 0.0
+        },
+        {
+          "name": "upperleg02.L",
+          "armature": "Human.rig",
+          "object": "Human.rig",
+          "score": 0.0
+        },
+        {
+          "name": "lowerleg01.L",
+          "armature": "Human.rig",
+          "object": "Human.rig",
+          "score": 0.0
+        },
+        {
+          "name": "lowerleg02.L",
+          "armature": "Human.rig",
+          "object": "Human.rig",
+          "score": 0.0
+        }
+      ],
+      "default_bone": null,
+      "suggested_axis": "X",
+      "note": "Set default_bone to the exact bone name in the rig when you know it."
+    },
+    "6": {
+      "suggested_bones": [
+        {
+          "name": "root",
+          "armature": "Human.rig",
+          "object": "Human.rig",
+          "score": 0.0
+        },
+        {
+          "name": "pelvis.L",
+          "armature": "Human.rig",
+          "object": "Human.rig",
+          "score": 0.0
+        },
+        {
+          "name": "upperleg01.L",
+          "armature": "Human.rig",
+          "object": "Human.rig",
+          "score": 0.0
+        },
+        {
+          "name": "upperleg02.L",
+          "armature": "Human.rig",
+          "object": "Human.rig",
+          "score": 0.0
+        },
+        {
+          "name": "lowerleg01.L",
+          "armature": "Human.rig",
+          "object": "Human.rig",
+          "score": 0.0
+        },
+        {
+          "name": "lowerleg02.L",
+          "armature": "Human.rig",
+          "object": "Human.rig",
+          "score": 0.0
+        }
+      ],
+      "default_bone": null,
+      "suggested_axis": "X",
+      "note": "Set default_bone to the exact bone name in the rig when you know it."
+    },
+    "7": {
+      "suggested_bones": [
+        {
+          "name": "root",
+          "armature": "Human.rig",
+          "object": "Human.rig",
+          "score": 0.0
+        },
+        {
+          "name": "pelvis.L",
+          "armature": "Human.rig",
+          "object": "Human.rig",
+          "score": 0.0
+        },
+        {
+          "name": "upperleg01.L",
+          "armature": "Human.rig",
+          "object": "Human.rig",
+          "score": 0.0
+        },
+        {
+          "name": "upperleg02.L",
+          "armature": "Human.rig",
+          "object": "Human.rig",
+          "score": 0.0
+        },
+        {
+          "name": "lowerleg01.L",
+          "armature": "Human.rig",
+          "object": "Human.rig",
+          "score": 0.0
+        },
+        {
+          "name": "lowerleg02.L",
+          "armature": "Human.rig",
+          "object": "Human.rig",
+          "score": 0.0
+        }
+      ],
+      "default_bone": null,
+      "suggested_axis": "X",
+      "note": "Set default_bone to the exact bone name in the rig when you know it."
+    },
+    "8": {
+      "suggested_bones": [
+        {
+          "name": "root",
+          "armature": "Human.rig",
+          "object": "Human.rig",
+          "score": 0.0
+        },
+        {
+          "name": "pelvis.L",
+          "armature": "Human.rig",
+          "object": "Human.rig",
+          "score": 0.0
+        },
+        {
+          "name": "upperleg01.L",
+          "armature": "Human.rig",
+          "object": "Human.rig",
+          "score": 0.0
+        },
+        {
+          "name": "upperleg02.L",
+          "armature": "Human.rig",
+          "object": "Human.rig",
+          "score": 0.0
+        },
+        {
+          "name": "lowerleg01.L",
+          "armature": "Human.rig",
+          "object": "Human.rig",
+          "score": 0.0
+        },
+        {
+          "name": "lowerleg02.L",
+          "armature": "Human.rig",
+          "object": "Human.rig",
+          "score": 0.0
+        }
+      ],
+      "default_bone": null,
+      "suggested_axis": "X",
+      "note": "Set default_bone to the exact bone name in the rig when you know it."
+    },
+    "9": {
+      "suggested_bones": [
+        {
+          "name": "root",
+          "armature": "Human.rig",
+          "object": "Human.rig",
+          "score": 0.0
+        },
+        {
+          "name": "pelvis.L",
+          "armature": "Human.rig",
+          "object": "Human.rig",
+          "score": 0.0
+        },
+        {
+          "name": "upperleg01.L",
+          "armature": "Human.rig",
+          "object": "Human.rig",
+          "score": 0.0
+        },
+        {
+          "name": "upperleg02.L",
+          "armature": "Human.rig",
+          "object": "Human.rig",
+          "score": 0.0
+        },
+        {
+          "name": "lowerleg01.L",
+          "armature": "Human.rig",
+          "object": "Human.rig",
+          "score": 0.0
+        },
+        {
+          "name": "lowerleg02.L",
+          "armature": "Human.rig",
+          "object": "Human.rig",
+          "score": 0.0
+        }
+      ],
+      "default_bone": null,
+      "suggested_axis": "X",
+      "note": "Set default_bone to the exact bone name in the rig when you know it."
+    },
+    "10": {
+      "suggested_bones": [
+        {
+          "name": "root",
+          "armature": "Human.rig",
+          "object": "Human.rig",
+          "score": 0.0
+        },
+        {
+          "name": "pelvis.L",
+          "armature": "Human.rig",
+          "object": "Human.rig",
+          "score": 0.0
+        },
+        {
+          "name": "upperleg01.L",
+          "armature": "Human.rig",
+          "object": "Human.rig",
+          "score": 0.0
+        },
+        {
+          "name": "upperleg02.L",
+          "armature": "Human.rig",
+          "object": "Human.rig",
+          "score": 0.0
+        },
+        {
+          "name": "lowerleg01.L",
+          "armature": "Human.rig",
+          "object": "Human.rig",
+          "score": 0.0
+        },
+        {
+          "name": "lowerleg02.L",
+          "armature": "Human.rig",
+          "object": "Human.rig",
+          "score": 0.0
+        }
+      ],
+      "default_bone": null,
+      "suggested_axis": "X",
+      "note": "Set default_bone to the exact bone name in the rig when you know it."
+    },
+    "11": {
+      "suggested_bones": [
+        {
+          "name": "root",
+          "armature": "Human.rig",
+          "object": "Human.rig",
+          "score": 0.0
+        },
+        {
+          "name": "pelvis.L",
+          "armature": "Human.rig",
+          "object": "Human.rig",
+          "score": 0.0
+        },
+        {
+          "name": "upperleg01.L",
+          "armature": "Human.rig",
+          "object": "Human.rig",
+          "score": 0.0
+        },
+        {
+          "name": "upperleg02.L",
+          "armature": "Human.rig",
+          "object": "Human.rig",
+          "score": 0.0
+        },
+        {
+          "name": "lowerleg01.L",
+          "armature": "Human.rig",
+          "object": "Human.rig",
+          "score": 0.0
+        },
+        {
+          "name": "lowerleg02.L",
+          "armature": "Human.rig",
+          "object": "Human.rig",
+          "score": 0.0
+        }
+      ],
+      "default_bone": null,
+      "suggested_axis": "X",
+      "note": "Set default_bone to the exact bone name in the rig when you know it."
+    },
+    "12": {
+      "suggested_bones": [
+        {
+          "name": "root",
+          "armature": "Human.rig",
+          "object": "Human.rig",
+          "score": 0.0
+        },
+        {
+          "name": "pelvis.L",
+          "armature": "Human.rig",
+          "object": "Human.rig",
+          "score": 0.0
+        },
+        {
+          "name": "upperleg01.L",
+          "armature": "Human.rig",
+          "object": "Human.rig",
+          "score": 0.0
+        },
+        {
+          "name": "upperleg02.L",
+          "armature": "Human.rig",
+          "object": "Human.rig",
+          "score": 0.0
+        },
+        {
+          "name": "lowerleg01.L",
+          "armature": "Human.rig",
+          "object": "Human.rig",
+          "score": 0.0
+        },
+        {
+          "name": "lowerleg02.L",
+          "armature": "Human.rig",
+          "object": "Human.rig",
+          "score": 0.0
+        }
+      ],
+      "default_bone": null,
+      "suggested_axis": "X",
+      "note": "Set default_bone to the exact bone name in the rig when you know it."
+    },
+    "13": {
+      "suggested_bones": [
+        {
+          "name": "root",
+          "armature": "Human.rig",
+          "object": "Human.rig",
+          "score": 0.0
+        },
+        {
+          "name": "pelvis.L",
+          "armature": "Human.rig",
+          "object": "Human.rig",
+          "score": 0.0
+        },
+        {
+          "name": "upperleg01.L",
+          "armature": "Human.rig",
+          "object": "Human.rig",
+          "score": 0.0
+        },
+        {
+          "name": "upperleg02.L",
+          "armature": "Human.rig",
+          "object": "Human.rig",
+          "score": 0.0
+        },
+        {
+          "name": "lowerleg01.L",
+          "armature": "Human.rig",
+          "object": "Human.rig",
+          "score": 0.0
+        },
+        {
+          "name": "lowerleg02.L",
+          "armature": "Human.rig",
+          "object": "Human.rig",
+          "score": 0.0
+        }
+      ],
+      "default_bone": null,
+      "suggested_axis": "X",
+      "note": "Set default_bone to the exact bone name in the rig when you know it."
+    },
+    "14": {
+      "suggested_bones": [
+        {
+          "name": "root",
+          "armature": "Human.rig",
+          "object": "Human.rig",
+          "score": 0.0
+        },
+        {
+          "name": "pelvis.L",
+          "armature": "Human.rig",
+          "object": "Human.rig",
+          "score": 0.0
+        },
+        {
+          "name": "upperleg01.L",
+          "armature": "Human.rig",
+          "object": "Human.rig",
+          "score": 0.0
+        },
+        {
+          "name": "upperleg02.L",
+          "armature": "Human.rig",
+          "object": "Human.rig",
+          "score": 0.0
+        },
+        {
+          "name": "lowerleg01.L",
+          "armature": "Human.rig",
+          "object": "Human.rig",
+          "score": 0.0
+        },
+        {
+          "name": "lowerleg02.L",
+          "armature": "Human.rig",
+          "object": "Human.rig",
+          "score": 0.0
+        }
+      ],
+      "default_bone": null,
+      "suggested_axis": "X",
+      "note": "Set default_bone to the exact bone name in the rig when you know it."
+    },
+    "15": {
+      "suggested_bones": [
+        {
+          "name": "root",
+          "armature": "Human.rig",
+          "object": "Human.rig",
+          "score": 0.0
+        },
+        {
+          "name": "pelvis.L",
+          "armature": "Human.rig",
+          "object": "Human.rig",
+          "score": 0.0
+        },
+        {
+          "name": "upperleg01.L",
+          "armature": "Human.rig",
+          "object": "Human.rig",
+          "score": 0.0
+        },
+        {
+          "name": "upperleg02.L",
+          "armature": "Human.rig",
+          "object": "Human.rig",
+          "score": 0.0
+        },
+        {
+          "name": "lowerleg01.L",
+          "armature": "Human.rig",
+          "object": "Human.rig",
+          "score": 0.0
+        },
+        {
+          "name": "lowerleg02.L",
+          "armature": "Human.rig",
+          "object": "Human.rig",
+          "score": 0.0
+        }
+      ],
+      "default_bone": null,
+      "suggested_axis": "X",
+      "note": "Set default_bone to the exact bone name in the rig when you know it."
+    },
+    "16": {
+      "suggested_bones": [
+        {
+          "name": "root",
+          "armature": "Human.rig",
+          "object": "Human.rig",
+          "score": 0.0
+        },
+        {
+          "name": "pelvis.L",
+          "armature": "Human.rig",
+          "object": "Human.rig",
+          "score": 0.0
+        },
+        {
+          "name": "upperleg01.L",
+          "armature": "Human.rig",
+          "object": "Human.rig",
+          "score": 0.0
+        },
+        {
+          "name": "upperleg02.L",
+          "armature": "Human.rig",
+          "object": "Human.rig",
+          "score": 0.0
+        },
+        {
+          "name": "lowerleg01.L",
+          "armature": "Human.rig",
+          "object": "Human.rig",
+          "score": 0.0
+        },
+        {
+          "name": "lowerleg02.L",
+          "armature": "Human.rig",
+          "object": "Human.rig",
+          "score": 0.0
+        }
+      ],
+      "default_bone": null,
+      "suggested_axis": "X",
+      "note": "Set default_bone to the exact bone name in the rig when you know it."
+    },
+    "17": {
+      "suggested_bones": [
+        {
+          "name": "root",
+          "armature": "Human.rig",
+          "object": "Human.rig",
+          "score": 0.0
+        },
+        {
+          "name": "pelvis.L",
+          "armature": "Human.rig",
+          "object": "Human.rig",
+          "score": 0.0
+        },
+        {
+          "name": "upperleg01.L",
+          "armature": "Human.rig",
+          "object": "Human.rig",
+          "score": 0.0
+        },
+        {
+          "name": "upperleg02.L",
+          "armature": "Human.rig",
+          "object": "Human.rig",
+          "score": 0.0
+        },
+        {
+          "name": "lowerleg01.L",
+          "armature": "Human.rig",
+          "object": "Human.rig",
+          "score": 0.0
+        },
+        {
+          "name": "lowerleg02.L",
+          "armature": "Human.rig",
+          "object": "Human.rig",
+          "score": 0.0
+        }
+      ],
+      "default_bone": null,
+      "suggested_axis": "X",
+      "note": "Set default_bone to the exact bone name in the rig when you know it."
+    },
+    "18": {
+      "suggested_bones": [
+        {
+          "name": "root",
+          "armature": "Human.rig",
+          "object": "Human.rig",
+          "score": 0.0
+        },
+        {
+          "name": "pelvis.L",
+          "armature": "Human.rig",
+          "object": "Human.rig",
+          "score": 0.0
+        },
+        {
+          "name": "upperleg01.L",
+          "armature": "Human.rig",
+          "object": "Human.rig",
+          "score": 0.0
+        },
+        {
+          "name": "upperleg02.L",
+          "armature": "Human.rig",
+          "object": "Human.rig",
+          "score": 0.0
+        },
+        {
+          "name": "lowerleg01.L",
+          "armature": "Human.rig",
+          "object": "Human.rig",
+          "score": 0.0
+        },
+        {
+          "name": "lowerleg02.L",
+          "armature": "Human.rig",
+          "object": "Human.rig",
+          "score": 0.0
+        }
+      ],
+      "default_bone": null,
+      "suggested_axis": "X",
+      "note": "Set default_bone to the exact bone name in the rig when you know it."
+    },
+    "19": {
+      "suggested_bones": [
+        {
+          "name": "root",
+          "armature": "Human.rig",
+          "object": "Human.rig",
+          "score": 0.0
+        },
+        {
+          "name": "pelvis.L",
+          "armature": "Human.rig",
+          "object": "Human.rig",
+          "score": 0.0
+        },
+        {
+          "name": "upperleg01.L",
+          "armature": "Human.rig",
+          "object": "Human.rig",
+          "score": 0.0
+        },
+        {
+          "name": "upperleg02.L",
+          "armature": "Human.rig",
+          "object": "Human.rig",
+          "score": 0.0
+        },
+        {
+          "name": "lowerleg01.L",
+          "armature": "Human.rig",
+          "object": "Human.rig",
+          "score": 0.0
+        },
+        {
+          "name": "lowerleg02.L",
+          "armature": "Human.rig",
+          "object": "Human.rig",
+          "score": 0.0
+        }
+      ],
+      "default_bone": null,
+      "suggested_axis": "X",
+      "note": "Set default_bone to the exact bone name in the rig when you know it."
+    },
+    "20": {
+      "suggested_bones": [
+        {
+          "name": "root",
+          "armature": "Human.rig",
+          "object": "Human.rig",
+          "score": 0.0
+        },
+        {
+          "name": "pelvis.L",
+          "armature": "Human.rig",
+          "object": "Human.rig",
+          "score": 0.0
+        },
+        {
+          "name": "upperleg01.L",
+          "armature": "Human.rig",
+          "object": "Human.rig",
+          "score": 0.0
+        },
+        {
+          "name": "upperleg02.L",
+          "armature": "Human.rig",
+          "object": "Human.rig",
+          "score": 0.0
+        },
+        {
+          "name": "lowerleg01.L",
+          "armature": "Human.rig",
+          "object": "Human.rig",
+          "score": 0.0
+        },
+        {
+          "name": "lowerleg02.L",
+          "armature": "Human.rig",
+          "object": "Human.rig",
+          "score": 0.0
+        }
+      ],
+      "default_bone": null,
+      "suggested_axis": "X",
+      "note": "Set default_bone to the exact bone name in the rig when you know it."
+    }
+  }
+}

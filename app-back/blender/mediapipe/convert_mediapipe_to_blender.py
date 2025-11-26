@@ -1,216 +1,330 @@
+"""
+CONVERSIÓN: MediaPipe Video → Poses Convertidas para Blender
+=============================================================
+
+Convierte un JSON de MediaPipe (video-based) a un formato que Blender puede aplicar
+directamente a los huesos de MakeHuman usando quaternions y jerarquía parent-child.
+
+ENTRADA: poses_mediapipe_video.json (landmarks de MediaPipe frame-by-frame)
+SALIDA: poses_converted_video.json (rotaciones de huesos preparadas para Blender)
+
+Mapeando 21 landmarks de MediaPipe a 15 huesos de MakeHuman.
+"""
+
 import json
-import math
 from pathlib import Path
+import math
 import numpy as np
-from scipy.spatial.transform import Rotation as R
 
-BASE_DIR = Path(__file__).parent
+# ============================================================================
+# MAPEO: MediaPipe 21 Landmarks → MakeHuman Hand Bones
+# ============================================================================
+# 
+# MediaPipe proporciona 21 puntos (0-20). Mapeamos cada par de landmarks
+# consecutivos a un hueso de MakeHuman.
+#
+# Formato: 'bone_name': (start_landmark_idx, end_landmark_idx)
 
-MEDIAPIPE_JSON = BASE_DIR / "poses_mediapipe_video.json"
-#MEDIAPIPE_JSON = BASE_DIR / "poses_mediapipe.json"
+MEDIAPIPE_TO_MAKEHUMAN_BONES = {
+    # Pulgar (Thumb: landmarks 1-4)
+    'finger1-1.L': (0, 1),   # WRIST → THUMB_CMC
+    'finger1-2.L': (1, 2),   # THUMB_CMC → THUMB_MCP
+    'finger1-3.L': (2, 3),   # THUMB_MCP → THUMB_IP
 
-OUTPUT_JSON = BASE_DIR.parent / "poses_converted_video.json"
-#OUTPUT_JSON = BASE_DIR.parent / "poses_converted.json"
+    # Índice (Index: landmarks 5-8)
+    'finger2-1.L': (0, 5),   # WRIST → INDEX_MCP
+    'finger2-2.L': (5, 6),   # INDEX_MCP → INDEX_PIP
+    'finger2-3.L': (6, 7),   # INDEX_PIP → INDEX_DIP
 
-# ========== PARÁMETROS DE DESNORMALIZACIÓN ==========
-IMAGE_WIDTH = 640           # píxeles (ajusta a tu resolución)
-IMAGE_HEIGHT = 480          # píxeles
-HAND_WIDTH_MM = 200         # milímetros (~20cm)
-CAMERA_FOV_DEG = 65         # grados (típico en móviles)
+    # Medio (Middle: landmarks 9-12)
+    'finger3-1.L': (0, 9),   # WRIST → MIDDLE_MCP
+    'finger3-2.L': (9, 10),  # MIDDLE_MCP → MIDDLE_PIP
+    'finger3-3.L': (10, 11), # MIDDLE_PIP → MIDDLE_DIP
 
-HAND_WIDTH_M = HAND_WIDTH_MM / 1000.0  # convertir a metros
+    # Anular (Ring: landmarks 13-16)
+    'finger4-1.L': (0, 13),  # WRIST → RING_MCP
+    'finger4-2.L': (13, 14), # RING_MCP → RING_PIP
+    'finger4-3.L': (14, 15), # RING_PIP → RING_DIP
 
-# ========== MAPEO MEDIAPIPE -> BLENDER ==========
-MEDIAPIPE_TO_BLENDER = {
-    0: "wrist.L",
-    1: "finger1-1.L",
-    2: "finger1-2.L",
-    3: "finger1-3.L",
-    5: "finger2-1.L",
-    6: "finger2-2.L",
-    7: "finger2-3.L",
-    9: "finger3-1.L",
-    10: "finger3-2.L",
-    11: "finger3-3.L",
-    13: "finger4-1.L",
-    14: "finger4-2.L",
-    15: "finger4-3.L",
-    17: "finger5-1.L",
-    18: "finger5-2.L",
-    19: "finger5-3.L",
+    # Meñique (Pinky: landmarks 17-20)
+    'finger5-1.L': (0, 17),  # WRIST → PINKY_MCP
+    'finger5-2.L': (17, 18), # PINKY_MCP → PINKY_PIP
+    'finger5-3.L': (18, 19), # PINKY_PIP → PINKY_DIP
 }
 
-def denormalize_mediapipe(mp_point: dict, image_width: int = IMAGE_WIDTH, 
-                          image_height: int = IMAGE_HEIGHT) -> dict:
+# ============================================================================
+# RUTAS (Ajusta según tu estructura de carpetas)
+# ============================================================================
+
+IN_PATH = Path(__file__).resolve().parent / "poses_mediapipe_video.json"
+OUT_PATH = Path(__file__).resolve().parent / "poses_converted_video.json"
+
+# ============================================================================
+# FUNCIONES AUXILIARES
+# ============================================================================
+
+def load_json(p):
+    """Carga un JSON."""
+    return json.loads(Path(p).read_text(encoding="utf-8"))
+
+def save_json(p, data):
+    """Guarda un JSON formateado."""
+    Path(p).parent.mkdir(parents=True, exist_ok=True)
+    Path(p).write_text(json.dumps(data, indent=2), encoding="utf-8")
+
+def to_np(lm):
     """
-    Convierte un punto normalizado MediaPipe (0-1) a coordenadas Blender (metros).
-    
+    Convierte un landmark de cualquier formato a numpy array [x, y, z].
+    Soporta: dict {x, y, z}, list/tuple.
+    """
+    if lm is None:
+        return None
+
+    if isinstance(lm, dict):
+        if "x" in lm and "y" in lm:
+            x = float(lm.get("x", 0.0))
+            y = float(lm.get("y", 0.0))
+            z = float(lm.get("z", 0.0))
+            return np.array([x, y, z], dtype=float)
+
+    if isinstance(lm, (list, tuple)) and len(lm) >= 2:
+        x = float(lm[0])
+        y = float(lm[1])
+        z = float(lm[2]) if len(lm) > 2 else 0.0
+        return np.array([x, y, z], dtype=float)
+
+    return None
+
+def mediapipe_to_blender_coords(p):
+    """
+    Convierte coordenadas de MediaPipe a sistema de Blender.
+
+    MediaPipe: X (derecha), Y (abajo), Z (hacia atrás/cámara)
+    Blender:   X (derecha), Y (adelante), Z (arriba)
+    """
+    return np.array([
+        p[0],       # X se mantiene
+        -p[2],      # Z de MP → -Y de Blender
+        p[1]        # Y de MP → Z de Blender
+    ], dtype=float)
+
+def quat_from_vectors(u, v):
+    """
+    Calcula el quaternion [w, x, y, z] que rota el vector u al vector v.
+
+    Usa la fórmula de Rodrigues para rotaciones.
+    """
+    u = u / (np.linalg.norm(u) + 1e-12)
+    v = v / (np.linalg.norm(v) + 1e-12)
+
+    dot = np.dot(u, v)
+
+    # Casos especiales: vectores paralelos o antiparalelos
+    if dot > 0.999999:
+        return [1.0, 0.0, 0.0, 0.0]
+
+    if dot < -0.999999:
+        # 180 grados: elegir eje ortogonal
+        axis = np.cross(u, np.array([1.0, 0.0, 0.0]))
+        if np.linalg.norm(axis) < 1e-6:
+            axis = np.cross(u, np.array([0.0, 1.0, 0.0]))
+        axis = axis / (np.linalg.norm(axis) + 1e-12)
+        return [0.0, float(axis[0]), float(axis[1]), float(axis[2])]
+
+    # Caso general: usar fórmula de Rodrigues
+    axis = np.cross(u, v)
+    s = math.sqrt((1.0 + dot) * 2.0)
+    invs = 1.0 / s
+
+    qx = axis[0] * invs
+    qy = axis[1] * invs
+    qz = axis[2] * invs
+    qw = 0.5 * s
+
+    return [float(qw), float(qx), float(qy), float(qz)]
+
+def convert_frame_to_bones(frame_data, landmarks, denorm_config):
+    """
+    Convierte un frame con 21 landmarks a un diccionario de huesos con rotaciones.
+
     Args:
-        mp_point: {"x": 0-1, "y": 0-1, "z": 0-1}
-        image_width: ancho de imagen en píxeles
-        image_height: alto de imagen en píxeles
-    
+        frame_data: datos del frame (frame_number, timestamp, etc.)
+        landmarks: lista de 21 puntos de MediaPipe
+        denorm_config: configuración de desnormalización (ancho, alto, escala)
+
     Returns:
-        {"x": metros, "y": metros, "z": metros} en coordenadas Blender
+        dict con estructura {'frame_number': N, 'timestamp_sec': T, 'bones': {...}}
     """
-    # Paso 1: Pasar de (0-1) a píxeles
-    x_px = mp_point["x"] * image_width
-    y_px = mp_point["y"] * image_height
-    z_norm = mp_point["z"]
-    
-    # Paso 2: Centrar en (0, 0)
-    x_centered_px = x_px - image_width / 2
-    y_centered_px = y_px - image_height / 2
-    
-    # Paso 3: Convertir píxeles a metros
-    # Scale: metros por píxel
-    scale = HAND_WIDTH_M / image_width
-    
-    x_blender = x_centered_px * scale
-    y_blender = -y_centered_px * scale  # ← Invertir Y (MediaPipe vs Blender)
-    z_blender = z_norm * HAND_WIDTH_M   # Escalar profundidad
-    
-    return {
-        "x": float(x_blender),
-        "y": float(y_blender),
-        "z": float(z_blender)
+    frame_out = {
+        'frame_number': frame_data.get('frame_number'),
+        'timestamp_sec': frame_data.get('timestamp_sec'),
+        'hand_detected': frame_data.get('hand_detected', False),
+        'handedness': frame_data.get('handedness')
     }
 
-def compute_rotation(vec_from: np.ndarray, vec_to: np.ndarray) -> dict:
-    """Calcula rotación que lleva vec_from a vec_to."""
-    
-    def safe_normalize(v: np.ndarray) -> np.ndarray:
-        n = np.linalg.norm(v)
-        if n < 1e-8:
-            return None
-        return v / n
-    
-    v1 = safe_normalize(np.array(vec_from, dtype=float))
-    v2 = safe_normalize(np.array(vec_to, dtype=float))
-    
-    if v1 is None or v2 is None:
-        rot = R.from_matrix(np.eye(3))
+    # Convertir landmarks a numpy arrays
+    pts = []
+    for lm in landmarks:
+        p = to_np(lm)
+        if p is None:
+            continue
+        pts.append(p)
+
+    if len(pts) == 0:
+        frame_out['bones'] = {}
+        return frame_out
+
+    pts = np.array(pts)
+
+    # Si los puntos parecen normalizados (~0..1), desnormalizar a metros
+    if np.nanmax(np.abs(pts)) <= 1.5:
+        # Heurística: si los valores están en [0, 1], son normalizados
+        hand_width_mm = float(denorm_config.get('hand_width_mm', 200))
+        scale_m = hand_width_mm / 1000.0  # convertir mm a metros
+
+        # Centrar y voltear Y
+        px = (pts[:, 0] - 0.5) * scale_m
+        py = (0.5 - pts[:, 1]) * scale_m
+        pz = pts[:, 2] * scale_m
+
+        pts_m = np.column_stack([px, py, pz])
     else:
-        dot = np.dot(v1, v2)
-        
-        if np.isclose(dot, 1.0, atol=1e-8):
-            rot = R.from_matrix(np.eye(3))
-        elif np.isclose(dot, -1.0, atol=1e-8):
-            axis = np.array([1.0, 0.0, 0.0])
-            if abs(v1[0]) > 0.9:
-                axis = np.array([0.0, 1.0, 0.0])
-            ortho = np.cross(v1, axis)
-            ortho = ortho / np.linalg.norm(ortho)
-            rot = R.from_rotvec(math.pi * ortho)
-        else:
-            cross = np.cross(v1, v2)
-            s = np.linalg.norm(cross)
-            K = np.array([[0, -cross[2], cross[1]],
-                          [cross[2], 0, -cross[0]],
-                          [-cross[1], cross[0], 0]])
-            rot_matrix = np.eye(3) + K + K @ K * ((1 - dot) / (s ** 2))
-            rot = R.from_matrix(rot_matrix)
-    
-    # scipy devuelve [x,y,z,w]; convertir a [w,x,y,z]
-    q_xyzw = rot.as_quat()
-    q_xyzw = q_xyzw / np.linalg.norm(q_xyzw)
-    q_wxyz = [float(q_xyzw[3]), float(q_xyzw[0]), float(q_xyzw[1]), float(q_xyzw[2])]
-    
-    # Euler en radianes
-    euler_rad = rot.as_euler('XYZ', degrees=False)
-    
-    return {
-        "rot_quat": q_wxyz,  # [w,x,y,z]
-        "rot_euler": [float(e) for e in euler_rad]  # radianes
-    }
+        # Ya están en metros (world_landmarks)
+        pts_m = pts.copy()
 
-# ========== CARGAR Y PROCESAR ==========
+    # Convertir a sistema de coordenadas de Blender
+    pts_blender = np.array([mediapipe_to_blender_coords(p) for p in pts_m])
 
-if not MEDIAPIPE_JSON.exists():
-    raise FileNotFoundError(f"No encontrado: {MEDIAPIPE_JSON}")
+    # Generar rotaciones para cada hueso
+    bones = {}
 
-with open(MEDIAPIPE_JSON) as f:
-    mediapipe_data = json.load(f)
+    for bone_name, (start_idx, end_idx) in MEDIAPIPE_TO_MAKEHUMAN_BONES.items():
+        if start_idx >= len(pts_blender) or end_idx >= len(pts_blender):
+            continue
 
-output_data = {
-    "meta": {
-        "armature": "Human.rig",
-        "rotation": "QUATERNION",
-        "source": "MediaPipe hand landmarks",
-        "denormalization": {
-            "image_width": IMAGE_WIDTH,
-            "image_height": IMAGE_HEIGHT,
-            "hand_width_mm": HAND_WIDTH_MM,
-            "camera_fov_deg": CAMERA_FOV_DEG
+        # Posición inicial y final del hueso en Blender
+        pos_start = pts_blender[start_idx]
+        pos_end = pts_blender[end_idx]
+
+        # Vector de dirección del hueso
+        v_target = pos_end - pos_start
+
+        if np.linalg.norm(v_target) < 1e-9:
+            continue
+
+        # Vector de referencia: asumir que los huesos en rest pose apuntan en +Y local
+        # (esto es una aproximación, ideal sería leer el rig real)
+        v_from = np.array([0.0, 1.0, 0.0], dtype=float)
+
+        # Calcular quaternion
+        quat = quat_from_vectors(v_from, v_target)
+
+        bone_entry = {
+            'rotation_quat': quat,  # [w, x, y, z]
+            'position': pos_end.tolist()
         }
-    },
-    "poses": {}
-}
 
-print(f"Procesando {len(mediapipe_data.get('poses', {}))} gestos...")
-print(f"Config desnormalización:")
-print(f"  - Resolución imagen: {IMAGE_WIDTH}x{IMAGE_HEIGHT} px")
-print(f"  - Ancho mano: {HAND_WIDTH_MM} mm = {HAND_WIDTH_M} m")
-print(f"  - FOV cámara: {CAMERA_FOV_DEG}°\n")
+        bones[bone_name] = bone_entry
 
-for gesture_name, gesture_info in mediapipe_data.get("poses", {}).items():
-    if not gesture_info.get("hand_detected", False):
-        print(f"⊘ {gesture_name}: hand_detected=False (saltado)")
-        continue
-    
-    world_landmarks = gesture_info.get("world_landmarks", [])
-    if len(world_landmarks) != 21:
-        print(f"⊘ {gesture_name}: {len(world_landmarks)} landmarks (esperado 21, saltado)")
-        continue
-    
-    # Desnormalizar landmarks
-    points_denorm = []
-    for lm in world_landmarks:
-        pt = denormalize_mediapipe(lm)
-        points_denorm.append(pt)
-    
-    points_array = np.array([[p["x"], p["y"], p["z"]] for p in points_denorm])
-    
-    # Calcular rotaciones
-    bones_rotations = {}
-    
-    # Mapeo: para cada dedo, calcula rotaciones entre segmentos
-    fingers = {
-        "Thumb": [0, 1, 2, 3, 4],
-        "Index": [0, 5, 6, 7, 8],
-        "Middle": [0, 9, 10, 11, 12],
-        "Ring": [0, 13, 14, 15, 16],
-        "Pinky": [0, 17, 18, 19, 20]
-    }
-    
-    for finger_name, indices in fingers.items():
-        for i in range(len(indices) - 1):
-            start_idx = indices[i]
-            end_idx = indices[i + 1]
-            
-            # Nombre hueso Blender
-            bone_name = MEDIAPIPE_TO_BLENDER.get(end_idx)
-            if not bone_name:
-                continue
-            
-            # Vector del hueso (desde start a end)
-            vec_from = np.array([1.0, 0.0, 0.0])  # dirección por defecto
-            vec_to = points_array[end_idx] - points_array[start_idx]
-            
-            # Calcular rotación
-            rot_data = compute_rotation(vec_from, vec_to)
-            bones_rotations[bone_name] = {
-                "rot_quat": rot_data["rot_quat"],
-                "rot_euler": rot_data["rot_euler"]
+    frame_out['bones'] = bones
+    return frame_out
+
+def convert_pose_entry(pose_entry, denorm_config):
+    """
+    Convierte una entrada de pose (puede tener múltiples frames) a formato Blender.
+
+    Args:
+        pose_entry: entrada del JSON con 'frames' (lista de frames)
+        denorm_config: configuración global de desnormalización
+
+    Returns:
+        lista de frames convertidos
+    """
+    frames_in = pose_entry.get('frames', [])
+    frames_out = []
+
+    for frame_in in frames_in:
+        landmarks = frame_in.get('world_landmarks') or frame_in.get('landmarks', [])
+
+        if len(landmarks) != 21:
+            # Frame inválido, saltar
+            frame_out = {
+                'frame_number': frame_in.get('frame_number'),
+                'timestamp_sec': frame_in.get('timestamp_sec'),
+                'hand_detected': False,
+                'bones': {}
             }
-    
-    output_data["poses"][gesture_name] = {"bones": bones_rotations}
-    print(f"✓ {gesture_name}: {len(bones_rotations)} huesos procesados")
+        else:
+            frame_out = convert_frame_to_bones(frame_in, landmarks, denorm_config)
 
-# Escribir salida
-with open(OUTPUT_JSON, "w") as f:
-    json.dump(output_data, f, indent=2)
+        frames_out.append(frame_out)
 
-print(f"\n✓ Conversión completada.")
-print(f"  Salida: {OUTPUT_JSON}")
-print(f"  Gestos: {len(output_data['poses'])}")
+    return frames_out
+
+# ============================================================================
+# MAIN
+# ============================================================================
+
+def main():
+    print("="*70)
+    print("CONVERSIÓN: MediaPipe Video → Poses para Blender")
+    print("="*70)
+
+    # Cargar entrada
+    input_file = IN_PATH
+    if not input_file.exists():
+        # Buscar relativa al script
+        input_file = Path(__file__).resolve().parent / "poses_mediapipe_video.json"
+
+    if not input_file.exists():
+        raise SystemExit(f"❌ Archivo de entrada no encontrado: {IN_PATH}")
+
+    print(f"✓ Cargando: {input_file}")
+    data_in = load_json(input_file)
+
+    # Metadatos de salida
+    meta_out = {
+        'armature': 'Human.rig',
+        'rotation_format': 'QUATERNION',
+        'source': 'MediaPipe hand landmarks (VIDEO)',
+        'conversion_note': 'Mapeado a huesos de mano MakeHuman con jerarquía parent-child',
+        'denormalization': {
+            'image_width': 1920,
+            'image_height': 1080,
+            'hand_width_mm': 200,
+            'camera_fov_deg': 65
+        }
+    }
+
+    denorm_config = meta_out['denormalization']
+
+    # Convertir poses
+    out = {'meta': meta_out, 'poses': {}}
+
+    poses_in = data_in.get('poses', {})
+
+    for pose_name, pose_entry in poses_in.items():
+        print(f"\n  Procesando pose: {pose_name}")
+
+        frames_converted = convert_pose_entry(pose_entry, denorm_config)
+
+        out['poses'][pose_name] = {
+            'gesture_name': pose_entry.get('gesture_name', pose_name),
+            'video_info': pose_entry.get('video_info', {}),
+            'total_frames': len(frames_converted),
+            'frames': frames_converted
+        }
+
+        print(f"    ✓ {len(frames_converted)} frames convertidos")
+
+    # Guardar salida
+    save_json(OUT_PATH, out)
+    print(f"\n✓ Guardado: {OUT_PATH}")
+    print(f"\nResumen:")
+    print(f"  - Poses procesadas: {len(out['poses'])}")
+    print(f"  - Mapeo: 21 landmarks MediaPipe → 15 huesos MakeHuman")
+    print(f"  - Rotaciones: Quaternions [w, x, y, z]")
+    print(f"  - Armature destino: {meta_out['armature']}")
+
+if __name__ == "__main__":
+    main()

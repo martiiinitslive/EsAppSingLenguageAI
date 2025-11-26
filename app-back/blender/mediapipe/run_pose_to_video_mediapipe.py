@@ -49,7 +49,7 @@ SPEED_FACTOR = 1.0
 #   INPUT_TEXT = "HELLO WORLD"    # → ["H", "E", "L", "L", "O", "SPACE", "W", "O", "R", "L", "D"]
 #   INPUT_TEXT = "HI."            # → ["H", "I", "PERIOD"]
 #   INPUT_TEXT = None             # → Usa --text o --poses de línea de comandos
-INPUT_TEXT = "hOla. como estas? yo muy bien primo, juan"  # Cambia a "HELLO", "HI THERE", etc. para usar texto fijo
+INPUT_TEXT = "Estar en gRUpom ayuda a: (1) expresar sus sentiMIentos."  # Cambia a "HELLO", "HI THERE", etc. para usar texto fijo
 
 # ========== PARAMETRIZACIÓN DE VELOCIDAD ==========
 # Controla cuántos frames dura cada letra en el vídeo

@@ -1,261 +1,207 @@
+"""
+PIPELINE COMPLETO: Video → MediaPipe → Poses → Blender → Video Renderizado
+
+Este script ejecuta toda la cadena:
+1. Convierte MediaPipe JSON a poses para Blender
+2. Aplica poses en Blender y renderiza
+
+Ajusta las rutas y configuración al inicio.
+"""
+
 import os
 import sys
 import shlex
 import shutil
 import subprocess
 import re
+import json
 from pathlib import Path
 
-# ========== CONFIG (ajusta según tu entorno) ==========
+# ============================================================================
+# CONFIGURACIÓN - AJUSTA ESTOS VALORES
+# ============================================================================
 
+# Ruta a ejecutable de Blender
 BLENDER_PATH = r"C:\Program Files\Blender Foundation\Blender 4.5\blender.exe"
+# En Linux: "/usr/bin/blender"
+# En Mac: "/Applications/Blender.app/Contents/MacOS/Blender"
+
+# Carpeta base (donde están los scripts)
 BASE_DIR = Path(__file__).resolve().parent
 
-BLEND_FILE   = str(BASE_DIR / "cuerpo_humano_rigged.blend")
-SCRIPT_PATH  = str(BASE_DIR / "text_to_video_from_poses_video.py")
-POSES_JSON   = str(BASE_DIR / "poses_converted_video.json")
-CAMERA_JSON  = str(BASE_DIR / "camera_library.json")
-ARMATURE     = "Human.rig"
-POSES        = "A"            # formato 'A,B,C' o cadena vacía para usar --text
-FPS          = 60
-FRAME_STEP   = 1              # procesar cada N frames del vídeo (1 = todos)
-ENGINE       = "EEVEE"
-OUT_PATH     = str(BASE_DIR / "output" / "out_video_from_video.mp4")
-WIDTH        = 1920
-HEIGHT       = 1080
-CAMERA_NAME  = "Cam_01"
-FFMPEG_PATH  = r"C:\ffmpeg\bin\ffmpeg.exe"
-ADD_SUBTITLES = True
-SUB_FONT = "Arial"
-SUB_FONT_SIZE = 48
-SUB_MARGIN_V = 40
-SKIP_DEFOCUS = False
-POSE_DURATION = 0   # segundos por pose (None o 0 para no comprimir)
-# ======================================================
+# Archivos
+BLEND_FILE = str(BASE_DIR / "cuerpo_humano_rigged.blend")
+# Script de conversión (está en la subcarpeta `mediapipe`)
+SCRIPT_CONVERT = str(BASE_DIR / "mediapipe" / "convert_mediapipe_to_blender.py")
+# Script de renderizado (en la carpeta principal `blender`)
+SCRIPT_RENDER = str(BASE_DIR / "text_to_video_from_poses_video.py")
+
+# JSON de entrada (MediaPipe) -- normalmente en `mediapipe/`
+POSES_MEDIAPIPE_JSON = str(BASE_DIR / "mediapipe" / "poses_mediapipe_video.json")
+
+# JSON intermedio (convertido) -- lo genera el script de conversión en `mediapipe/`
+POSES_CONVERTED_JSON = str(BASE_DIR / "mediapipe" / "poses_converted_video.json")
+
+# Configuración de renderizado
+ARMATURE_NAME = "Human.rig"
+POSES_TO_RENDER = "A,B,C"  # Lista de poses separadas por comas
+FPS = 60
+WIDTH = 1920
+HEIGHT = 1080
+ENGINE = "EEVEE"  # o "CYCLES" para más calidad
+
+# Ruta de salida
+OUTPUT_DIR = str(BASE_DIR / "output")
+OUTPUT_VIDEO = str(Path(OUTPUT_DIR) / "alphabet_video.mp4")
+
+# FFmpeg (para post-procesamiento)
+FFMPEG_PATH = r"C:\ffmpeg\bin\ffmpeg.exe"
+# En Linux/Mac: "ffmpeg" (si está en PATH)
+
+# ============================================================================
+# FUNCIONES
+# ============================================================================
 
 LOG_PREFIX = "[PIPELINE]"
 
 def log(msg):
+    """Imprime log con prefijo."""
     print(f"{LOG_PREFIX} {msg}")
 
 def require_file(path, description, exit_on_missing=True):
+    """Verifica que un archivo exista."""
     p = Path(path)
     if not p.exists():
         msg = f"❌ No se encontró {description}: {path}"
         if exit_on_missing:
-            log(msg); sys.exit(1)
+            log(msg)
+            sys.exit(1)
         else:
-            log(msg); return False
+            log(msg)
+            return False
     return True
 
-def _atempo_chain_factors(speed):
-    target = 1.0 / float(speed)
-    factors = []
-    t = target
-    while t > 2.0 + 1e-9:
-        factors.append(2.0); t /= 2.0
-    while t < 0.5 - 1e-9:
-        factors.append(0.5); t /= 0.5
-    factors.append(max(1e-6, t))
-    return factors
+def step_convert_mediapipe():
+    """
+    PASO 1: Convertir MediaPipe JSON a formato Blender.
+    """
+    log("\n" + "="*70)
+    log("PASO 1: CONVERTIR MediaPipe → Formato Blender")
+    log("="*70)
 
-def adjust_video_speed_ffmpeg(src_path, speed, ffmpeg_exec=FFMPEG_PATH):
-    src = Path(src_path)
-    if not src.exists():
-        raise RuntimeError(f"Archivo de entrada no encontrado: {src}")
-    exec_path = ffmpeg_exec
-    if ffmpeg_exec == "ffmpeg":
-        exec_path = shutil.which("ffmpeg") or ""
-    if not exec_path or not Path(exec_path).exists():
-        raise RuntimeError(f"ffmpeg no encontrado: {ffmpeg_exec}")
+    require_file(POSES_MEDIAPIPE_JSON, "poses_mediapipe_video.json")
+    require_file(SCRIPT_CONVERT, "script de conversión")
 
-    suffix = str(speed).replace(".", "p")
-    out = src.with_name(f"{src.stem}_speed{suffix}{src.suffix}")
-    setpts = f"{speed}*PTS"
-    atempo_chain = ",".join(f"atempo={f:.8f}" for f in _atempo_chain_factors(speed))
+    log(f"Entrada:  {POSES_MEDIAPIPE_JSON}")
+    log(f"Salida:   {POSES_CONVERTED_JSON}")
 
-    cmd = [
-        str(exec_path), "-y", "-i", str(src),
-        "-filter_complex", f"[0:v]setpts={setpts}[v];[0:a]{atempo_chain}[a]",
-        "-map", "[v]", "-map", "[a]",
-        "-c:v", "libx264", "-preset", "fast", "-crf", "18",
-        "-c:a", "aac", "-b:a", "192k",
-        str(out)
-    ]
-    proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
-    if proc.returncode != 0:
-        raise RuntimeError(f"ffmpeg falló (rc={proc.returncode}):\n{proc.stdout}")
-    if not out.exists() or out.stat().st_size == 0:
-        raise RuntimeError(f"ffmpeg no produjo salida válida: {out}")
-    return str(out)
 
-def run_blender_pipeline(out_path=None):
+    # Si el JSON convertido ya existe, saltar la conversión para ahorrar tiempo
+    out_p = Path(POSES_CONVERTED_JSON)
+    if out_p.exists():
+        log(f"✓ Saltando conversión: '{POSES_CONVERTED_JSON}' ya existe")
+        return
+
+    cmd = [sys.executable, SCRIPT_CONVERT]
+
+    log(f"Ejecutando: {' '.join(shlex.quote(a) for a in cmd)}")
+
+    result = subprocess.run(cmd, cwd=str(BASE_DIR))
+
+    if result.returncode != 0:
+        log(f"❌ Conversión falló (rc={result.returncode})")
+        sys.exit(1)
+
+    if not require_file(POSES_CONVERTED_JSON, "poses convertidas", exit_on_missing=False):
+        log("❌ Conversión no generó salida")
+        sys.exit(1)
+
+    log("✓ Conversión completada")
+
+def step_render_blender():
+    """
+    PASO 2: Aplicar poses en Blender y renderizar.
+    """
+    log("\n" + "="*70)
+    log("PASO 2: APLICAR POSES EN BLENDER Y RENDERIZAR")
+    log("="*70)
+
+    require_file(BLENDER_PATH, "Blender")
+    require_file(BLEND_FILE, "archivo .blend")
+    require_file(SCRIPT_RENDER, "script de renderizado")
+    require_file(POSES_CONVERTED_JSON, "poses convertidas")
+
+    Path(OUTPUT_DIR).mkdir(parents=True, exist_ok=True)
+
+    log(f"Blender:   {BLENDER_PATH}")
+    log(f"Escena:    {BLEND_FILE}")
+    log(f"Poses:     {POSES_CONVERTED_JSON}")
+    log(f"Armature:  {ARMATURE_NAME}")
+    log(f"Salida:    {OUTPUT_VIDEO}")
+
     args = [
         BLENDER_PATH,
         BLEND_FILE,
         "--background",
-        "--python", SCRIPT_PATH,
+        "--python", SCRIPT_RENDER,
         "--",
-        "--library", POSES_JSON,
-        "--poses", POSES,
-        "--armature", ARMATURE,
+        "--library", POSES_CONVERTED_JSON,
+        "--poses", POSES_TO_RENDER,
+        "--armature", ARMATURE_NAME,
         "--fps", str(FPS),
-        "--engine", ENGINE,
         "--width", str(WIDTH),
         "--height", str(HEIGHT),
-        "--camera_lib", CAMERA_JSON,
-        "--camera_name", CAMERA_NAME,
-        "--frame_step", str(FRAME_STEP)
+        "--engine", ENGINE,
+        "--out", OUTPUT_VIDEO
     ]
-    if SKIP_DEFOCUS:
-        args.append("--skip_defocus")
-    if POSE_DURATION and POSE_DURATION > 0:
-        args += ["--pose_duration", str(POSE_DURATION)]
-    if out_path:
-        args += ["--out", out_path]
-    log("Running Blender: " + " ".join(shlex.quote(a) for a in args))
-    subprocess.run(args, check=True)
 
-def _seq_from_poses_string(poses_str):
-    return [s.strip() for s in poses_str.split(",") if s.strip()]
+    log(f"\nEjecutando Blender...")
+    log(f"Comando: {' '.join(shlex.quote(a) for a in args)}")
 
-def _format_ass_time(sec):
-    h = int(sec // 3600); m = int((sec % 3600) // 60); s = int(sec % 60)
-    cs = int(round((sec - int(sec)) * 100))
-    return f"{h:d}:{m:02d}:{s:02d}.{cs:02d}"
+    result = subprocess.run(args)
 
-def generate_ass_for_cumulative_letters(sequence, fps, hold_frames, transition_frames, ass_path, start_frame=1, per_pose_frame_counts=None):
-    """
-    Si per_pose_frame_counts se proporciona (lista de frames por pose) usa esos valores
-    para calcular la duración de cada pose; en caso contrario se usa hold/transition
-    como antes (pero evitar duraciones cero).
-    """
-    header = "[Script Info]\nScriptType: v4.00+\n\n[V4+ Styles]\n"
-    header += f"Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, " \
-              f"Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, " \
-              f"Alignment, MarginL, MarginR, MarginV, Encoding\n"
-    header += f"Style: Default,{SUB_FONT},{SUB_FONT_SIZE},&H00FFFFFF,&H000000FF,&H00000000,&H64000000,0,0,0,0,100,100,0,0,1,2,0,0,{SUB_MARGIN_V},1\n\n"
-    header += "Events:\nFormat: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n"
-
-    lines = []
-    frame = start_frame
-    cumulative = ""
-    for idx, pose_name in enumerate(sequence):
-        c = pose_name[0] if pose_name else ""
-        c = str(c)
-        if cumulative == "":
-            cumulative = c.upper()
-        else:
-            stripped = cumulative.rstrip()
-            if stripped.endswith("."):
-                cumulative = cumulative + " " + c.upper()
-            else:
-                cumulative = cumulative + c.lower()
-
-        # duración en frames para esta pose:
-        if per_pose_frame_counts and idx < len(per_pose_frame_counts):
-            dur_frames = max(1, int(per_pose_frame_counts[idx]))
-            start_sec = (frame - 1) / float(fps)
-            end_sec = (frame + dur_frames - 1) / float(fps)
-            next_frame = frame + dur_frames
-        else:
-            # fallback: usar hold+transition (asegurar al menos 1 frame)
-            frame_hold_end = frame + max(0, hold_frames)
-            next_frame = frame_hold_end + max(0, transition_frames)
-            if next_frame <= frame:
-                next_frame = frame + 1
-            start_sec = (frame - 1) / float(fps)
-            end_sec = (next_frame - 1) / float(fps)
-
-        text = cumulative.replace("\n", " ").replace(",", "\\,")
-        lines.append(f"Dialogue: 0,{_format_ass_time(start_sec)},{_format_ass_time(end_sec)},Default,,0,0,0,,{text}\n")
-        frame = next_frame
-
-    with open(ass_path, "w", encoding="utf-8") as f:
-        f.write(header)
-        for l in lines:
-            f.write(l)
-    return ass_path
-
-def burn_ass_with_ffmpeg(input_video, ass_path, output_video, ffmpeg_exec):
-    from pathlib import Path
-    ass_p = Path(ass_path)
-    if not ass_p.exists():
-        raise RuntimeError(f"ASS no encontrado: {ass_path}")
-    ass_posix = ass_p.as_posix()
-    escaped = ass_posix.replace(":", r"\:").replace("'", r"\'")
-    vf_arg = f"subtitles='{escaped}'"
-    cmd = [ffmpeg_exec, "-y", "-i", str(input_video), "-vf", vf_arg, "-c:a", "copy", str(output_video)]
-    proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
-    if proc.returncode != 0:
-        raise RuntimeError(f"ffmpeg ass burn falló (rc={proc.returncode}):\n{proc.stdout}")
-    return str(output_video)
-
-def main(out_path=None):
-    log("Iniciando pipeline (video-based poses)...")
-    require_file(BLENDER_PATH, "Blender")
-    require_file(BLEND_FILE, ".blend")
-    require_file(SCRIPT_PATH, "script interno de Blender")
-    if not require_file(POSES_JSON, "poses_converted_video.json", exit_on_missing=False):
-        log("Continuando sin poses JSON completo (posibles fallbacks).")
-    if Path(CAMERA_JSON).exists():
-        log(f"Usando camera lib: {CAMERA_JSON}")
-    else:
-        log("Aviso: no se encontró camera_library.json (se usará la cámara de la escena).")
-
-    # si no se pasó out_path, generar nombre basado en la cadena procesada (POSES)
-    if out_path is None:
-        seq_str = POSES or "out"
-        # normalizar: reemplazar comas/espacios por guión bajo y quitar caracteres inválidos
-        seq_norm = seq_str.replace(",", "_").replace(" ", "_")
-        safe_name = re.sub(r'[^A-Za-z0-9_\-\.]', '_', seq_norm).strip("_")
-        out_path = str(Path(BASE_DIR) / "output" / f"{safe_name}.mp4")
-
-    Path(out_path).parent.mkdir(parents=True, exist_ok=True)
-
-    run_blender_pipeline(out_path)
-
-    out_file = Path(out_path)
-    if not out_file.exists() or out_file.stat().st_size == 0:
-        log(f"Error: Blender finalizó sin generar un vídeo válido en: {out_path}")
+    if result.returncode != 0:
+        log(f"❌ Blender falló (rc={result.returncode})")
         sys.exit(1)
-    log(f"✅ Vídeo generado: {out_path}")
 
-    if ADD_SUBTITLES:
-        try:
-            ff = FFMPEG_PATH if FFMPEG_PATH != "ffmpeg" else shutil.which("ffmpeg")
-            if not ff or not Path(ff).exists():
-                log("⚠️ ffmpeg no encontrado. Se omite generación de subtítulos quemados.")
-            else:
-                seq = _seq_from_poses_string(POSES)
-                # intentar cargar duraciones reales desde el JSON (total_frames / aplicar frame_step)
-                per_pose_frames = []
-                try:
-                    import json as _json
-                    pj = _json.load(open(POSES_JSON, "r", encoding="utf-8"))
-                    for p in seq:
-                        ent = pj.get("poses", {}).get(p, {})
-                        tf = ent.get("total_frames") or ent.get("video_info", {}).get("total_frames") or 0
-                        if FRAME_STEP and FRAME_STEP > 1:
-                            tf = int((tf + (FRAME_STEP - 1)) // FRAME_STEP)
-                        per_pose_frames.append(int(tf) if tf else 1)
-                except Exception as e:
-                    log(f"⚠️ No se pudieron leer duraciones desde JSON para subtítulos: {e}")
-                    per_pose_frames = None
+    log("✓ Blender completado")
 
-                ass_path = Path(out_file.parent) / (out_file.stem + ".ass")
-                generate_ass_for_cumulative_letters(seq, FPS, 0, 0, str(ass_path), start_frame=1, per_pose_frame_counts=per_pose_frames)
-                temp_out = out_file.with_name(out_file.stem + "_subs" + out_file.suffix)
-                log(f"Quemando subtítulos ASS -> {ass_path} en {out_path}")
-                burn_ass_with_ffmpeg(out_file, str(ass_path), temp_out, ff)
-                temp_out.replace(out_file)
-                log(f"Subtítulos aplicados: {out_file}")
-        except Exception as e:
-            log(f"Error aplicando subtítulos: {e}")
+def main():
+    """Ejecuta el pipeline completo."""
+    log("="*70)
+    log("PIPELINE COMPLETO: MediaPipe → Blender → Video")
+    log("="*70)
+
+    # PASO 1: Conversión
+    try:
+        step_convert_mediapipe()
+    except Exception as e:
+        log(f"❌ Error en conversión: {e}")
+        sys.exit(1)
+
+    # PASO 2: Renderizado
+    try:
+        step_render_blender()
+    except Exception as e:
+        log(f"❌ Error en renderizado: {e}")
+        sys.exit(1)
+
+    # Verificar salida
+    if Path(OUTPUT_VIDEO).exists():
+        size_mb = Path(OUTPUT_VIDEO).stat().st_size / (1024*1024)
+        log(f"\n✅ VIDEO COMPLETADO: {OUTPUT_VIDEO} ({size_mb:.1f} MB)")
+    else:
+        log(f"\n⚠️ No se encontró video de salida: {OUTPUT_VIDEO}")
+
+    log("\n" + "="*70)
+    log("PIPELINE COMPLETADO")
+    log("="*70)
 
 if __name__ == "__main__":
     try:
         main()
     except Exception as e:
-        print(f"{LOG_PREFIX} ⚠️ Error inesperado: {e}")
-        raise
+        log(f"Error inesperado: {e}")
+        import traceback
+        traceback.print_exc()
+        sys.exit(1)
