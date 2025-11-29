@@ -2,9 +2,7 @@
 #hay que poner: **/x/
 
 # Ignorar archivo y carpetas de documentación
-codigo-de-ejemplo-redes/
 *.txt
-venv_run.bat
 
 # --- BACKEND ---
 __pycache__/
