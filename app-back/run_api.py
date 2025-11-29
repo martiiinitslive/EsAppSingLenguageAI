@@ -7,5 +7,5 @@ if __name__ == "__main__":
         "main:app",
         host=os.getenv("API_HOST", "0.0.0.0"),
         port=int(os.getenv("API_PORT", 8000)),
-        reload=True  # Enable auto-reload for development; disable in production
+        reload=False  # Set reload=False to avoid reloader subprocess issues in certain environments
     )

@@ -2,7 +2,7 @@
 Module to extract audio from a video file.
 """
 
-from moviepy.editor import VideoFileClip
+from moviepy.video.io.VideoFileClip import VideoFileClip
 
 def extract_audio_from_video(video_path, output_audio_path):
     """

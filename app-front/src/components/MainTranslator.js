@@ -1,12 +1,66 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 
 function MainTranslator() {
   const [inputType, setInputType] = useState('text');
   const [inputValue, setInputValue] = useState('');
   const [resultVideoUrl, setResultVideoUrl] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+  const [playbackRate, setPlaybackRate] = useState(1.0);
+  const videoRef = useRef(null);
+
+  const API_BASE = process.env.REACT_APP_API_BASE || '';
 
   // Handler básico
   const handleInputChange = (e) => setInputValue(e.target.value);
+
+  async function generateVideo() {
+    setError(null);
+    setLoading(true);
+    setResultVideoUrl(null);
+    try {
+      if (inputType === 'text') {
+        const resp = await fetch(`${API_BASE}/generate_from_text/`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ text: inputValue }),
+        });
+        const j = await resp.json();
+        if (!resp.ok) throw new Error(j.detail || 'Server error');
+        setResultVideoUrl(API_BASE + j.download_url);
+      } else if (inputType === 'link') {
+        const resp = await fetch(`${API_BASE}/transcribe_youtube/`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ url: inputValue }),
+        });
+        const j = await resp.json();
+        if (!resp.ok) throw new Error(j.detail || 'Server error');
+        setResultVideoUrl(API_BASE + j.download_url);
+      } else if (inputType === 'file') {
+        if (!inputValue) throw new Error('No file selected');
+        const form = new FormData();
+        form.append('file', inputValue);
+        const resp = await fetch(`${API_BASE}/procesar_video/`, {
+          method: 'POST',
+          body: form,
+        });
+        const j = await resp.json();
+        if (!resp.ok) throw new Error(j.detail || 'Server error');
+        setResultVideoUrl(API_BASE + j.download_url);
+      }
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function onChangePlaybackRate(e) {
+    const r = parseFloat(e.target.value) || 1.0;
+    setPlaybackRate(r);
+    if (videoRef.current) videoRef.current.playbackRate = r;
+  }
 
   return (
     <div>
@@ -86,7 +140,10 @@ function MainTranslator() {
               />
             )}
           </div>
-          <button className="translate-btn">Generar vídeo</button>
+            <button className="translate-btn" onClick={generateVideo} disabled={loading}>
+              {loading ? 'Generando...' : 'Generar vídeo'}
+            </button>
+            {error && <div className="error">{error}</div>}
         </div>
         <div className="panel-separator">
           <span role="img" aria-label="arrow">➡️</span>
@@ -97,7 +154,20 @@ function MainTranslator() {
           </div>
           <div className="result-area">
             {resultVideoUrl ? (
-              <video src={resultVideoUrl} controls width="100%" />
+              <div>
+                <video ref={videoRef} src={resultVideoUrl} controls width="100%" />
+                <div style={{ marginTop: 8 }}>
+                  <label>Velocidad: </label>
+                  <select value={playbackRate} onChange={onChangePlaybackRate}>
+                    <option value={0.5}>0.5x</option>
+                    <option value={0.75}>0.75x</option>
+                    <option value={1}>1x</option>
+                    <option value={1.25}>1.25x</option>
+                    <option value={1.5}>1.5x</option>
+                    <option value={2}>2x</option>
+                  </select>
+                </div>
+              </div>
             ) : (
               <div className="placeholder">
                 <span role="img" aria-label="waiting">⌛</span>
