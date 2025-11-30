@@ -7,8 +7,8 @@ function App() {
   return (
     <div className="App">
       <header>
-        <h1>EsApp Sign Language AI</h1>
-        <p>Multimedia translator: text, audio, video or link</p>
+        <h1>Sign2Text</h1>
+        <p>Multimedia translator: text, audio, video or Youtube link</p>
       </header>
       <MainTranslator />
     </div>

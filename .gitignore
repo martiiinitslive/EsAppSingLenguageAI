@@ -22,6 +22,8 @@ __pycache__/
 **/.vscode/
 **/output/
 
+app-back/node_modules/
+app-back/mp/pose_cache/
 
 **/build/
 **/coverage/

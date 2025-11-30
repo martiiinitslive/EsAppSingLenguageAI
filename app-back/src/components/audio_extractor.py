@@ -16,5 +16,11 @@ def extract_audio_from_video(video_path, output_audio_path):
         audio = video.audio
         if audio is not None:
             audio.write_audiofile(output_audio_path)
+            # Log extraction result for visibility when called from backend
+            try:
+                print(f"[AUDIO] Extracted audio to: {output_audio_path}")
+            except Exception:
+                # best-effort print; avoid breaking extraction on logging error
+                pass
         else:
             raise ValueError("The video does not contain an audio track.")

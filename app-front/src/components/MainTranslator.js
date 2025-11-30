@@ -11,6 +11,7 @@ function MainTranslator() {
 
   // Default backend URL for development
   const API_BASE = process.env.REACT_APP_API_BASE || 'http://localhost:8000';
+  const DEFAULT_YT = 'https://www.youtube.com/watch?v=jNQXAC9IVRw';
 
   // Basic handler
   const handleInputChange = (e) => setInputValue(e.target.value);
@@ -87,19 +88,19 @@ function MainTranslator() {
       <div className="input-type-bar">
         <button
           className={inputType === 'text' ? 'active' : ''}
-          onClick={() => setInputType('text')}
+          onClick={() => { setInputType('text'); setInputValue(''); }}
         >
           <span role="img" aria-label="Text">📝</span> Text
         </button>
         <button
           className={inputType === 'file' ? 'active' : ''}
-          onClick={() => setInputType('file')}
+          onClick={() => { setInputType('file'); setInputValue(null); }}
         >
           <span role="img" aria-label="File">🎵</span> Audio/Video
         </button>
         <button
           className={inputType === 'link' ? 'active' : ''}
-          onClick={() => setInputType('link')}
+          onClick={() => { setInputType('link'); setInputValue(DEFAULT_YT); }}
         >
           <span role="img" aria-label="Link">🔗</span> Link
         </button>
@@ -111,17 +112,17 @@ function MainTranslator() {
           <div className="panel-header">
             {inputType === 'text' && (
               <>
-                <span role="img" aria-label="input">📝</span> Texto
+                <span role="img" aria-label="input">📝</span> Text
               </>
             )}
             {inputType === 'file' && (
               <>
-                <span role="img" aria-label="input">🎵</span> Audio/Vídeo
+                <span role="img" aria-label="input">🎵</span> Audio/Video
               </>
             )}
             {inputType === 'link' && (
               <>
-                <span role="img" aria-label="input">🔗</span> Enlace
+                <span role="img" aria-label="input">🔗</span> Link
               </>
             )}
           </div>
@@ -130,7 +131,7 @@ function MainTranslator() {
               <textarea
                 rows={6}
                 placeholder="Write text here..."
-                value={inputValue}
+                value={inputValue || ''}
                 onChange={handleInputChange}
               />
             )}
@@ -154,7 +155,7 @@ function MainTranslator() {
               <input
                 type="text"
                 placeholder="Paste the link here..."
-                value={inputValue}
+                value={inputValue || DEFAULT_YT}
                 onChange={handleInputChange}
               />
             )}

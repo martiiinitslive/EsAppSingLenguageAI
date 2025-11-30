@@ -1,5 +1,9 @@
-import uvicorn
 import os
+# Workaround for OpenMP duplicate-runtime initialization errors (libiomp5md.dll)
+# This allows libraries that embed different OpenMP runtimes to run together
+# in this process. It's a pragmatic workaround; see notes below.
+os.environ.setdefault('KMP_DUPLICATE_LIB_OK', 'TRUE')
+import uvicorn
 
 if __name__ == "__main__":
     # You can configure host and port via environment variables

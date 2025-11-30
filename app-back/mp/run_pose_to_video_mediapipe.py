@@ -22,6 +22,8 @@ import numpy as np
 
 OUTPUT_DIR = Path(__file__).resolve().parent.parent / "output_mp"
 OUTPUT_NAME = f"{Path(__file__).stem}.mp4"
+# Cache directory for per-pose rendered frames
+POSE_CACHE_DIR = Path(__file__).resolve().parent / "pose_cache"
 
 # ==========  SPEED_FACTOR ==========
 # SPEED_FACTOR: Controls the GLOBAL video speed (output fps)
@@ -131,6 +133,52 @@ def progress(s):
 
 def ensure_dir(p):
     Path(p).parent.mkdir(parents=True, exist_ok=True)
+
+
+def _sanitize_pose_name(name: str) -> str:
+    # create filesystem-safe pose folder name
+    try:
+        s = str(name)
+        # replace spaces and unsafe chars
+        for ch in (' ', '/', '\\', ':', '*', '?', '"', "'", '<', '>', '|'):
+            s = s.replace(ch, '_')
+        return s
+    except Exception:
+        return str(name)
+
+
+def _cache_dir_for(pose_name, w, h, hand_style):
+    folder = POSE_CACHE_DIR / f"{_sanitize_pose_name(pose_name)}_{w}x{h}_style_{hand_style}"
+    return folder
+
+
+def _cache_has_frames(cache_dir):
+    if not cache_dir.exists() or not cache_dir.is_dir():
+        return False
+    files = sorted([p for p in cache_dir.iterdir() if p.suffix.lower() in ('.png', '.jpg')])
+    return len(files) > 0
+
+
+def _load_cached_frames(cache_dir):
+    files = sorted([p for p in cache_dir.iterdir() if p.suffix.lower() in ('.png', '.jpg')])
+    frames = []
+    for f in files:
+        img = cv2.imread(str(f))
+        if img is None:
+            continue
+        frames.append(img)
+    return frames
+
+
+def _save_frames_to_cache(frames, cache_dir):
+    try:
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        for i, img in enumerate(frames, start=1):
+            fp = cache_dir / f"frame_{i:04d}.png"
+            # overwrite if exists
+            cv2.imwrite(str(fp), img)
+    except Exception as e:
+        progress(f"[CACHE] Warning: could not save cache for {cache_dir}: {e}")
 
 
 def find_ffmpeg():
@@ -959,8 +1007,51 @@ def render_sequence_from_json(json_path, sequence, out_path=None, show=True, sav
     # collect actual frames written per pose to generate accurate subtitle timing
     frames_counts = []
     cumulative = ""
+    # Print the sequence and the exact text that will be rendered (preview)
+    try:
+        # show raw token sequence
+        progress(f"[RENDER] Sequence tokens: {sequence}")
+        # build a preview of cumulative text applying the same capitalization rules
+        _preview = ""
+        _preview_list = []
+        for pose_name in sequence:
+            _c = pose_to_char(pose_name)
+            prev_non_space = None
+            for ch in reversed(_preview):
+                if ch and ch != " ":
+                    prev_non_space = ch
+                    break
+            at_start = (_preview.strip() == "")
+            if isinstance(_c, str) and _c.isalpha():
+                if at_start or prev_non_space == ".":
+                    _dc = _c.upper()
+                else:
+                    _dc = _c.lower()
+            else:
+                _dc = _c
+            _preview += _dc
+            _preview_list.append(_preview)
+        progress(f"[RENDER] Final cumulative text to render: '{_preview}'")
+    except Exception:
+        # Avoid breaking rendering if preview fails
+        pass
     for idx, pose_name in enumerate(sequence, start=1):
         progress(f"[{idx}/{len(sequence)}] Rendering pose '{pose_name}'")
+        # Attempt to use cached frames for this pose (sized and styled)
+        cache_dir = _cache_dir_for(pose_name, w, h, hand_style)
+        if _cache_has_frames(cache_dir):
+            try:
+                cached = _load_cached_frames(cache_dir)
+                progress(f"[CACHE] Hit: using {len(cached)} cached frames for pose '{pose_name}'")
+                # write cached frames directly
+                for img in cached:
+                    writer.write(img)
+                    total_frames += 1
+                frames_counts.append(len(cached))
+                # advance to next pose
+                continue
+            except Exception as e:
+                progress(f"[CACHE] Error loading cache for {pose_name}: {e}")
         pose_entry = poses.get(pose_name) or poses.get(pose_name.lower()) or poses.get(pose_name.upper())
 
         # find reference image or video
@@ -1021,6 +1112,8 @@ def render_sequence_from_json(json_path, sequence, out_path=None, show=True, sav
         cumulative = cumulative + dc
 
         pose_frame_count = 0
+        # buffer frames for optional caching
+        _frames_buffer = []
         if frames_list and isinstance(frames_list, list) and len(frames_list) > 0:
             for fi, frame_obj in enumerate(frames_list):
                 canvas = 255 * np.ones((h, w, 3), dtype="uint8")
@@ -1075,6 +1168,7 @@ def render_sequence_from_json(json_path, sequence, out_path=None, show=True, sav
                 writer.write(canvas)
                 total_frames += 1
                 pose_frame_count += 1
+                _frames_buffer.append(canvas.copy())
         else:
             # Use a shorter duration for punctuation and special-character tokens
             # so they appear faster than a normal pose. Criteria:
@@ -1114,8 +1208,19 @@ def render_sequence_from_json(json_path, sequence, out_path=None, show=True, sav
                 writer.write(canvas)
                 total_frames += 1
                 pose_frame_count += 1
+                _frames_buffer.append(canvas.copy())
         # record how many frames this pose produced (append for both branches)
         frames_counts.append(pose_frame_count)
+
+        # Save frames to cache for reuse in future renders (only if any frames produced)
+        try:
+            if pose_frame_count > 0:
+                # only cache if not already present
+                if not _cache_has_frames(cache_dir):
+                    _save_frames_to_cache(_frames_buffer, cache_dir)
+                    progress(f"[CACHE] Saved {len(_frames_buffer)} frames for pose '{pose_name}' to {cache_dir}")
+        except Exception as e:
+            progress(f"[CACHE] Warning: could not save cache for pose '{pose_name}': {e}")
     writer.release()
     progress(f"Writer released. Total frames written: {total_frames}")
     
