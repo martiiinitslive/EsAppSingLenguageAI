@@ -26,6 +26,8 @@ for p in current.parents:
 if repo_root is None:
     repo_root = current.parents[1]
 app_back = repo_root / "app-back"
+if str(repo_root) not in sys.path:
+    sys.path.insert(0, str(repo_root))
 if str(app_back) not in sys.path:
     sys.path.insert(0, str(app_back))
 

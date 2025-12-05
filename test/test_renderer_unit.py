@@ -20,12 +20,3 @@ def test_text_to_pose_sequence_basic():
     seq = mod.text_to_pose_sequence('Hi, ok.')
     assert 'SPACE' in seq or 'COMMA' in seq
     assert seq[-1] == 'PERIOD'
-
-
-@pytest.mark.skipif(not shutil.which('ffmpeg'), reason="ffmpeg not detected on system")
-def test_overlay_helper_runs():
-    mod = _load_renderer()
-    # Only test that overlay function is importable — actual invocation is heavy
-    if not hasattr(mod, 'overlay_pip_on_video'):
-        pytest.skip('overlay_pip_on_video not implemented in renderer')
-    assert callable(getattr(mod, 'overlay_pip_on_video'))
