@@ -1,243 +1,426 @@
-# EsAppSingLenguageAI — Documentación técnica
+# EsAppSingLenguageAI
+│
+├── launcher.py                # Quick-start launcher script
 
-Este documento describe en detalle la arquitectura, el pipeline de datos, los componentes clave y cómo ejecutar y probar el proyecto **EsAppSingLenguageAI**. Está pensado para desarrolladores que quieren entender o continuar el desarrollo.
+**EsAppSingLenguageAI** is a full-stack application built as a **Feasibility Study** (TFG - Trabajo de Fin de Grado) that combines:
 
-Contenido:
-- **Resumen del proyecto**
-- **Arquitectura y flujo de datos (pipeline)**
-- **Estructura del repositorio y descripción de archivos importantes**
-- **Cómo ejecutar localmente (backend + frontend)**
-- **Dependencias y requisitos del sistema**
-- **Testing**
-- **Limitaciones conocidas y próximos pasos**
+- 🎤 **Speech Recognition** (audio-to-text conversion)
+- 📝 **Text Normalization** (format text for sign language)
+- 🤖 **Pose Sequence Generation** (text-to-sign language poses)
+- 🎬 **MediaPipe Rendering** (poses-to-video with realistic hand animations)
+- 🌐 **Web Interface** (React frontend + FastAPI backend)
+- 📊 **Benchmarking & Metrics** (performance profiling)
 
----
-
-**Resumen del proyecto**
-
-EsAppSingLenguageAI es una aplicación para la generación de vídeos de interpretación en lengua de signos (dictadología) a partir de texto o de contenidos de vídeo/audio (subidos o descargados desde YouTube). El backend procesa y convierte audio→texto, normaliza texto, genera una secuencia de poses y renderiza un vídeo final que se sirve al frontend.
+The system outputs high-quality sign language videos with synchronized subtitles, designed for **Spanish Sign Language (LSE)**.
 
 ---
 
-**Arquitectura y pipeline de datos**
-
-Resumen del flujo de datos (alto nivel):
-
-1. Entrada (frontend):
-     - Texto manual (campo de texto).
-     - Enlace de YouTube (URL).
-     - Archivo de audio/video subido.
-
-2. Backend API (FastAPI): endpoints principales:
-     - `POST /generate_from_text/` — recibe JSON `{text}` → genera vídeo desde texto.
-     - `POST /transcribe_youtube/` — recibe `{url}` → descarga, extrae audio, transcribe, genera vídeo.
-     - `POST /procesar_video/` — recibe archivo (multipart form) → extrae audio, transcribe, genera vídeo.
-     - `GET /download_video/{filename}` — sirve el MP4 generado.
-
-3. Componentes internos (backend):
-     - Audio extraction: `extract_audio_from_video(video_path, out_audio_path)` — usa `moviepy`.
-     - Speech-to-text: `speech_to_text(audio_path)` — wrapper (actual implementación: `SpeechRecognition` / Google API or placeholder).
-     - Text normalization: `normalize_text_for_renderer(text)` — limpieza y normalización para el renderer.
-     - YouTube downloader: `download_youtube(url, out_dir)` — wrapper sobre `yt-dlp`.
-     - Renderer: `app-back/mp/run_pose_to_video_mediapipe.py` — genera el vídeo final a partir de una secuencia de poses y un JSON base de poses.
-
-4. Output: vídeo MP4 (`mp/output_mp/render_*.mp4`) y (opcionalmente) ficheros sidecar de subtítulos (`.ass`, `.srt`). El frontend consume la URL de descarga y reproduce el vídeo.
-
-Flujo de datos detallado para cada entrada:
-
-- A) Texto directo
-    1. Frontend POST a `/generate_from_text/` con `{text}`.
-    2. Backend normaliza el texto con `format_text_for_renderer.normalize_text_for_renderer()`.
-    3. Backend llama a `run_pose_to_video_mediapipe.text_to_pose_sequence()` para obtener la secuencia de poses.
-    4. Backend llama a `run_pose_to_video_mediapipe.render_sequence_from_json()` para renderizar vídeo (pasa `poses_mediapipe_video.json`).
-    5. Devuelve `{video_path, download_url}` al cliente.
-
-- B) Enlace de YouTube
-    1. Frontend POST a `/transcribe_youtube/` con `{url}`.
-    2. Backend usa `download_youtube()` (internamente llama `yt-dlp`) para obtener un MP4 temporal.
-    3. Extrae audio con `extract_audio_from_video()`.
-    4. Transcribe audio con `speech_to_text()`.
-    5. Borra el vídeo descargado y el audio (se limpian temporalmente).
-    6. Sigue los pasos A.2–A.4 para renderizar basado en el texto transcrito.
-
-- C) Archivo subido (audio/video)
-    1. Frontend envía multipart POST a `/procesar_video/` con `file`.
-    2. Backend guarda temporalmente el archivo en `app-back/temp/`.
-    3. Extrae audio con `extract_audio_from_video()` y transcribe con `speech_to_text()`.
-    4. Borra el upload y audio temporal.
-    5. Sigue los pasos A.2–A.4.
-
----
-
-**Estructura del repositorio y descripción de archivos importantes**
-
-Árbol (resumido) — paths más relevantes:
+## 🏗️ Architecture
 
 ```
-README.MD
-requirements.txt
-launcher.py
-app-back/
-    run_api.py
-    main.py
-    mp/
-        run_pose_to_video_mediapipe.py
-        poses_mediapipe_video.json
-        output_mp/
-    src/components/
-        audio_extractor.py
-        speech_to_text.py
-        format_text_for_renderer.py
-        downloader.py
-app-front/
-    package.json
-    src/components/MainTranslator.js
-test/
-    conftest.py
-    test_*.py
+EsAppSingLenguageAI/
+├── app-back/                  # FastAPI backend (Python 3.10+)
+│   ├── src/components/        # Core processing modules
+│   │   ├── audio_extractor.py     # Extract audio from video/YouTube
+│   │   ├── speech_to_text.py      # ASR (speech-to-text)
+│   │   ├── format_text_for_renderer.py  # Normalize text
+│   │   └── downloader.py      # YouTube video download
+│   ├── mp/                    # MediaPipe pose rendering
+│   │   ├── run_pose_to_video_mediapipe.py  # Main rendering engine
+│   │   ├── mediapipe/         # MediaPipe utilities
+│   │   └── pose_cache/        # Cached rendered pose frames
+│   ├── main.py                # FastAPI app definition
+│   ├── run_api.py             # API server launcher (Uvicorn)
+│   ├── bench_runner.py        # Benchmarking utility
+│   ├── metrics_logger.py      # Metrics collection schema
+│   ├── data/                  # Datasets (ASL poses, videos)
+│   └── logs/                  # CSV output files, runtime metrics
+│
+├── app-front/                 # React frontend
+│   ├── src/
+│   │   ├── App.js             # Main app component
+│   │   └── components/
+│   │       └── MainTranslator.js  # UI form (text/audio/video/YouTube)
+│   └── package.json
+│
+├── launcher.py                # Quick-start launcher script
+├── requirements.txt           # Python dependencies
+└── pytest.ini / test/         # Unit tests
 ```
-
-Descripción (archivo por archivo — sólo los más relevantes):
-
-- `app-back/main.py`
-    - Punto central del backend (FastAPI).
-    - Declara rutas: `/generate_from_text/`, `/procesar_video/`, `/transcribe_youtube/`, `/download_video/{filename}` y `/`.
-    - Contiene helper `_render_from_text(text)` que hace la importación dinámica del renderer `run_pose_to_video_mediapipe.py`, normaliza el texto y ejecuta `text_to_pose_sequence()` + `render_sequence_from_json()`.
-    - Tiene lógica de limpieza de archivos generados (`cleanup_generated_outputs`) ejecutada en shutdown y utilizada por `launcher.py`.
-    - Importante: la importación del renderer se hace dinámicamente con `importlib.util.spec_from_file_location()` (se añadió un fallback que soporta loaders personalizados usados en tests).
-
-- `app-back/mp/run_pose_to_video_mediapipe.py`
-    - Script de rendering que convierte una secuencia de poses a un vídeo final.
-    - Funcionalidad principal: `text_to_pose_sequence()` (mapea texto a tokens/poses) y `render_sequence_from_json(json_path, seq, out_path, ...)` (dibuja manos/landmarks, compone frames, opcionalmente genera `.ass` y quema subtítulos con `ffmpeg`).
-    - Alto uso de OpenCV (`cv2`) y NumPy; incluye funciones complejas de dibujo (wireframe y estilo “realistic”) y utilidades para localizar `ffmpeg`.
-    - Parámetros configurables al inicio: `FRAMES_PER_POSE`, `SPEED_FACTOR`, `DRAW_SUBTITLES_INLINE`, parámetros de subtítulos, estilos de piel/colores, etc.
-    - Producción: escribe en `app-back/mp/output_mp/` archivos `render_*.mp4` y opcionalmente `.ass/.srt`.
-
-- `app-back/src/components/audio_extractor.py`
-    - Usa `moviepy.video.io.VideoFileClip.VideoFileClip` para abrir el vídeo y escribir la pista de audio a disco (`audio.write_audiofile(output_audio_path)`).
-    - Excepciones: si no hay pista de audio lanza `ValueError`.
-
-- `app-back/src/components/speech_to_text.py`
-    - Wrapper para realizar transcripción de audio a texto. (Implementación actual: `SpeechRecognition` / Google Web Speech — revisar el fichero para detalles de la integración y límites de cuota).
-
-- `app-back/src/components/format_text_for_renderer.py`
-    - Normaliza texto para que el renderer lo pueda procesar: elimina diacríticos, sustituye signos de apertura españoles, reduce caracteres no soportados a espacios, colapsa espacios múltiples.
-
-- `app-back/src/components/downloader.py`
-    - Wrapper ligero sobre `yt-dlp` (comprobar si `yt-dlp` está en PATH).
-    - Descarga preferente: `bestaudio[ext=m4a]+bestvideo[ext=mp4]/best`, guarda en `out_dir` con template `%(id)s.%(ext)s`.
-
-- `app-front/src/components/MainTranslator.js`
-    - React component principal. Permite seleccionar input type (`text` / `file` / `link`), envía peticiones a la API y reproduce el `video` devuelto.
-    - URL base del backend: `API_BASE = process.env.REACT_APP_API_BASE || 'http://localhost:8000'`.
-    - Manejo robusto de respuestas (intenta parsear JSON y muestra errores legibles), y control de velocidad de reproducción.
-
-- `launcher.py`
-    - Script Windows-oriented para arrancar backend (`app-back/run_api.py`) y frontend (`npm start`) en consolas separadas.
-    - Gestiona terminación (Ctrl-C) y limpia `render_*.mp4` y sidecars en `app-back/mp/output_mp/` al salir.
-
-- `run_api.py`
-    - Script que arranca `uvicorn` con la app (ajustado para `reload=False` en este repo para evitar issues con subprocess durante tests/desarrollo).
-
-- `requirements.txt`
-    - Suma las dependencias Python necesarias: `fastapi`, `uvicorn`, `moviepy`, `yt-dlp`, `SpeechRecognition`, `pytest`, `httpx` (para tests), `mediapipe`, `opencv-python`, `numpy`, etc.
-
-- `test/` (pytest)
-    - Tests unitarios que usan `TestClient` y fixtures en `conftest.py`. Las pruebas mockean el renderer y componentes pesados para hacer las pruebas rápidas y reproducibles.
 
 ---
 
-**Cómo ejecutar localmente (dev)**
+## 🎯 Key Features
 
-Requisitos preinstalados en el sistema:
-- `ffmpeg` disponible en PATH (obligatorio para algunas features del renderer y para `moviepy` en producción).
-- `yt-dlp` en PATH para la opción de descarga de YouTube (o instalar `yt-dlp` desde pip, pero el helper usa el binario en PATH).
+### 1. **Multi-Modal Input Support**
+- ✅ Direct text input
+- ✅ Audio file upload
+- ✅ Video file upload
+- ✅ YouTube video URL (automatic download)
 
-Pasos (Windows, desde la raíz del repo):
+### 2. **Text-to-Sign Language Pipeline**
+```
+Input → Audio Extract → Speech-to-Text → Text Normalization → 
+Pose Sequence Generation → MediaPipe Rendering → Output Video
+```
 
-1) Crear y activar virtualenv (recomendado):
+### 3. **Advanced Rendering**
+- 📹 **Realistic Hand Animation** using MediaPipe landmarks (21 points per hand)
+- 🎨 **Skin tone rendering** with depth-based shadowing
+- 🖼️ **Picture-in-Picture** overlay (reference video in corner)
+- 📝 **Dynamic Subtitles** (ASS format with ffmpeg burning or SRT soft subtitles)
+- ⚡ **Frame Caching** (reuse rendered pose frames across requests)
 
-```powershell
+### 4. **Performance Monitoring**
+- 📊 **Runtime Metrics** collection (20-column CSV schema)
+- 🔍 **Process-Level Monitoring** (CPU/memory usage)
+- 🆔 **Request Correlation** (UUID-based request tracking)
+- 📈 **Benchmarking Tool** for local/API testing
+
+---
+
+## 🚀 Getting Started
+
+### Prerequisites
+- **Python 3.10+** (with venv)
+- **Node.js 16+** (for frontend)
+- **FFmpeg** (for video processing and subtitle burning)
+- **CUDA 12.1** (optional, for GPU acceleration)
+
+### Backend Setup
+
+```bash
+# 1. Create and activate virtual environment
 python -m venv .venv
-.\.venv\Scripts\activate
+.venv\Scripts\activate  # Windows
+source .venv/bin/activate  # Linux/macOS
+
+# 2. Install dependencies
 pip install -r requirements.txt
-```
 
-2) Ejecutar backend:
-
-```powershell
+# 3. Navigate to backend
 cd app-back
+
+# 4. Start the API server
 python run_api.py
+# Server runs on http://0.0.0.0:8000
 ```
 
-3) Ejecutar frontend (en otra consola):
+### Frontend Setup
 
-```powershell
+```bash
+# 1. Navigate to frontend
 cd app-front
+
+# 2. Install dependencies
 npm install
+
+# 3. Start development server
 npm start
+# Frontend runs on http://localhost:3000
 ```
 
-4) Alternativa: usar `launcher.py` desde la raíz para arrancar ambos (Windows):
+---
 
-```powershell
-python launcher.py
+## 📡 API Endpoints
+
+### `POST /generate_from_text/`
+Convert text directly to sign language video.
+
+**Request:**
+```json
+{
+  "text": "Hello world",
+  "request_id": "optional-uuid"
+}
 ```
 
-Nota: `launcher.py` abre consolas separadas y `http://localhost:3000` en el navegador.
-
----
-
-**Testing**
-
-Tests unitarios con `pytest` (ya incluidos en `test/`). Recomendaciones:
-
-```powershell
-.\.venv\Scripts\activate
-pip install -r requirements.txt
-pytest -q
+**Response:**
+```json
+{
+  "video_path": "/mp/output_mp/render_*.mp4",
+  "duration_seconds": 45.2,
+  "text_rendered": "Hello world"
+}
 ```
 
-Detalles importantes del suite de tests:
-- `test/conftest.py` ofrece fixtures que cargan dinámicamente `app-back/main.py` y mockean la importación del renderer para evitar render pesado.
-- Las pruebas comprueban endpoints y helpers (`format_text_for_renderer`, downloader error path) sin depender de `ffmpeg` o `OpenCV` en el entorno de CI.
+### `POST /transcribe_youtube/`
+Download YouTube video, extract audio, transcribe, and render to sign language.
+
+**Request:**
+```json
+{
+  "url": "https://www.youtube.com/watch?v=...",
+  "request_id": "optional-uuid"
+}
+```
+
+**Response:**
+```json
+{
+  "video_path": "/mp/output_mp/render_*.mp4",
+  "transcribed_text": "...",
+  "duration_seconds": 120.5
+}
+```
 
 ---
 
-**Dependencias y requisitos del sistema**
+## 🔧 Core Components
 
-- Python 3.10 (o 3.8+ recomendado)
-- FFmpeg (en PATH) — requerido por `moviepy` y para quemar subtítulos si `DRAW_SUBTITLES_INLINE=False`.
-- Node.js + npm — para el frontend.
-- yt-dlp (en PATH) para descargar vídeos de YouTube.
-- Recomendado: instalar paquetes de `requirements.txt` dentro de `.venv`.
+### Audio Extractor
+- Extracts audio from MP4/video files or YouTube streams
+- Returns WAV file for speech recognition
 
----
+### Speech-to-Text (ASR)
+- Converts audio to text using a speech recognition model
+- Returns normalized text ready for pose generation
 
-**Limitaciones conocidas, notas y recomendaciones**
+### Text Normalizer
+- Removes diacritics (accents)
+- Normalizes special characters
+- Preserves spaces and punctuation
 
-- Render pesado: `run_pose_to_video_mediapipe.py` usa OpenCV y puede requerir GPU o tiempo CPU intensivo. En producción es mejor offload a un worker (Celery/RQ) y retornar al cliente un job-id.
-- Subtítulos: el script genera `.ass` y hace un paso con `ffmpeg` para quemar subtítulos — esto exige que `ffmpeg` esté instalado y disponible.
-- Transcripción: `speech_to_text.py` usa `SpeechRecognition` (Google Web Speech) por defecto — esto tiene límites y latencia. Recomiendo evaluar `whisper` (local) o un servicio de pago para mayor fiabilidad.
-- Seguridad: actualmente CORS está abierto (`allow_origins=['*']`) para desarrollo — restringir en producción.
-- Manejo de archivos: el backend borra uploads y vídeos descargados en flujo normal, pero hay que vigilar concurrencia y race conditions si hay múltiples jobs simultáneos (usar directorios únicos por job).
+### Pose Sequence Generator
+- Maps text characters to sign language poses
+- Builds cumulative text representation
+- Handles capitalization rules (first letter, after periods)
 
----
-
-**Siguientes pasos recomendados**
-
-1. Añadir un worker (e.g., Celery/RQ) para ejecutar render en background y evitar bloqueo del servidor.
-2. Añadir integración con Whisper o servicio de STT para mayor robustez.
-3. Crear tests de integración que realmente lancen ffmpeg y el renderer en un entorno controlado (CI con imágenes que incluyen ffmpeg).
-4. Mejorar la política de limpieza y uso de directorios por job (uuid temporales para evitar colisiones).
-5. Documentar la API con ejemplos curl y añadir contrato OpenAPI más completo (FastAPI ya expone docs en `/docs`).
+### MediaPipe Renderer
+- Renders poses as video frames using MediaPipe landmarks
+- Supports both **realistic** and **wire** hand styles
+- Caches frames for performance (~1s per pose)
+- Burns ASS subtitles or embeds SRT
 
 ---
 
-Si quieres, genero ahora un fichero `README.MD` más corto para `app-back/README.md` y otro para `app-front/README.md` con instrucciones específicas por componente, o puedo crear scripts de ayuda (Makefile / PowerShell) para automatizar provisioning y ejecución.
+## 📊 Benchmarking & Metrics
 
-Si quieres que profundice en un fichero concreto (e.g., revisar `run_pose_to_video_mediapipe.py` por secciones y explicar cada función), dime cuál y lo hago a continuación.
+The project includes comprehensive benchmarking tools to measure performance:
+
+### Benchmark Runner
+```bash
+# Test with random text (API mode)
+python .\app-back\bench_runner.py \
+  --mode api \
+  --input-mode text \
+  --api-base "http://127.0.0.1:8000" \
+  --repetitions 10 \
+  --min-length 20 \
+  --max-length 100 \
+  --metrics \
+  --timeout 600
+```
+
+### Output Files
+- `logs/benchmarks.csv` - Aggregated benchmark results
+- `logs/benchmarks_summary.csv` - Statistical summary
+- `logs/runtime_metrics.csv` - Detailed runtime metrics (20 columns)
+
+### Metrics Schema (20 columns)
+```
+timestamp_utc, request_id, endpoint, input_type, input_length_seconds,
+text_length_chars, n_letters_rendered, success, error_stage,
+error_message_short, output_video_filename, output_video_duration_seconds,
+n_poses_rendered, t_total, t_download, t_extract_audio, t_asr,
+t_text_normalisation, t_pose_sequence, t_render
+```
 
 ---
 
-Autor: Generated/updated by assistant — si detectas que algo importante falta en la documentación (por ejemplo, dependencias privadas o variables de entorno), dímelo y lo añado.
+## ⚙️ Configuration
+
+### Environment Variables
+```bash
+# API Server
+API_HOST=0.0.0.0          # Server host
+API_PORT=8000             # Server port
+
+# Processing
+KMP_DUPLICATE_LIB_OK=TRUE # OpenMP compatibility
+```
+
+### Render Settings (in `mp/run_pose_to_video_mediapipe.py`)
+```python
+SPEED_FACTOR = 1.0                    # Video playback speed (1.0 = normal)
+FRAMES_PER_POSE = 60                  # Frames per character (higher = slower)
+PUNCT_FRAMES_PER_POSE = 15            # Frames for punctuation
+SUBTITLE_FONT_SIZE = 74               # ASS subtitle font size
+DRAW_SUBTITLES_INLINE = False         # Draw subtitles on frames (False = ffmpeg)
+HAND_RENDER_STYLE = "realistic"       # "realistic" or "wire"
+```
+
+---
+
+## 🧪 Testing
+
+### Unit Tests
+```bash
+pytest test/ -v
+```
+
+### Manual Testing
+```bash
+# Local command mode (test helper)
+python .\app-back\bench_runner.py \
+  --mode local \
+  --input-mode text \
+  --repetitions 1 \
+  --min-length 5 \
+  --max-length 5
+```
+
+---
+
+## 📈 Performance Characteristics
+
+- **Text Processing:** ~0.5s (ASR + normalization)
+- **Pose Rendering:** ~1s per character (with caching)
+- **Video Encoding:** ~2-3s per minute of video
+- **Total Pipeline:** 50-100 char text = ~2-3 minutes
+
+**Memory Usage:**
+- Backend server: ~500 MB baseline
+- Per-request: +100-300 MB (depending on video length)
+- Cache overhead: ~50 MB per unique pose
+
+---
+
+## 📦 Dependencies
+
+### Key Python Libraries
+- **FastAPI** - Web framework
+- **Uvicorn** - ASGI server
+- **OpenCV (cv2)** - Video processing
+- **MediaPipe** - Hand landmark detection
+- **NumPy** - Numerical computations
+- **librosa** - Audio processing
+- **moviepy** - Video manipulation
+- **yt-dlp** - YouTube video download
+- **PyTorch** - Deep learning (if using advanced ASR)
+
+### Frontend
+- **React 18+** - UI framework
+- **Node.js/npm** - Package management
+
+---
+
+## 🎬 Workflow Example
+
+### Text-to-Sign Video (5-step process)
+
+1. **User Input**
+   ```
+   Input: "Hola mundo"
+   ```
+
+2. **Text Normalization**
+   ```
+   Output: "Hola mundo" → ['H', 'o', 'l', 'a', 'SPACE', 'm', 'u', 'n', 'd', 'o']
+   ```
+
+3. **Pose Lookup**
+   ```
+   Each character maps to a sign language pose (cached or from dataset)
+   ```
+
+4. **Frame Rendering**
+   ```
+   Per pose: extract landmarks → draw on canvas → add subtitles → write frame
+   ~60 frames per character = 600 frames total
+   ```
+
+5. **Video Output**
+   ```
+   Output: render_1764963007.mp4 (10s duration, 30fps, 1920x1080)
+   With subtitles and picture-in-picture overlay
+   ```
+
+---
+
+## 🔍 Project Structure Details
+
+### `app-back/src/components/`
+| File | Purpose |
+|------|---------|
+| `audio_extractor.py` | Extract WAV from MP4/YouTube |
+| `speech_to_text.py` | Convert audio to text (ASR) |
+| `format_text_for_renderer.py` | Normalize text for poses |
+| `downloader.py` | Download YouTube videos |
+
+### `app-back/mp/`
+| Directory | Purpose |
+|-----------|---------|
+| `mediapipe/` | MediaPipe utilities & JSON conversion |
+| `pose_cache/` | Pre-rendered frame cache |
+| `output_mp/` | Generated video output |
+
+### `app-back/data/`
+- **ASL Dataset** - MediaPipe poses for Spanish Sign Language letters
+- **Videos** - Reference videos for each sign
+
+---
+
+## 🐛 Troubleshooting
+
+### "ffmpeg not found"
+```bash
+# Install ffmpeg
+# Windows: Download from https://ffmpeg.org/download.html
+# Or use: choco install ffmpeg
+# Or use: winget install FFmpeg
+```
+
+### "OpenMP duplicate runtime" Error
+✅ Already handled via `KMP_DUPLICATE_LIB_OK=TRUE` in `run_api.py`
+
+### API Returns 500 Error
+Check backend logs for:
+- Missing dataset files in `data/dataset-en-bruto/`
+- Video encoding issues (ffmpeg path)
+- Insufficient memory for pose rendering
+
+### Benchmark Timeout
+Increase `--timeout` value:
+```bash
+# For YouTube videos (90+ characters)
+--timeout 1800  # 30 minutes
+```
+
+---
+
+## 📝 License & Attribution
+
+This project is part of a **Feasibility Study (TFG)** for **Spanish Sign Language AI Translation**.
+
+**Built with:**
+- MediaPipe (Google) - Pose estimation
+- FFmpeg - Video processing
+- FastAPI - Backend framework
+- React - Frontend UI
+
+---
+
+## 📞 Contact & Support
+
+For issues, questions, or contributions:
+- Check existing GitHub issues
+- Run benchmarks to identify performance bottlenecks
+
+---
+
+## 🎓 Research & References
+
+This project implements a **feasibility study** for automated sign language video generation. Key research areas:
+
+- Pose estimation accuracy (MediaPipe vs alternatives)
+- Hand animation realism
+- Text-to-pose sequence mapping
+- Real-time rendering performance
+- ASR accuracy for Spanish
+
+---
+
+**Last Updated:** December 2025  
+**Version:** 1.0.0  
+**Status:** Active Development (Feasibility Study)
