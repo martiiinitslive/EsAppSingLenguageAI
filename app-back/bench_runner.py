@@ -11,6 +11,7 @@ python .\app-back\bench_runner.py --mode api --input-mode text --api-base "http:
 from __future__ import annotations
 
 import argparse
+import os
 import csv
 import datetime
 import json
@@ -43,10 +44,15 @@ def random_text(length: int) -> str:
     return "".join(random.choice(letters) for _ in range(length))
 
 
-def run_single(cmd_template: str, input_text: str, timeout: int | None = None, record_proc_metrics: bool = False) -> dict:
-    with tempfile.NamedTemporaryFile(mode="w", delete=False, encoding="utf-8", suffix=".txt") as fh:
-        fh.write(input_text)
-        input_path = fh.name
+def run_single(cmd_template: str, input_text: str | None, timeout: int | None = None, record_proc_metrics: bool = False, input_path: str | None = None) -> dict:
+    # If an explicit input_path is provided (e.g. audio/video file), use it
+    created_temp = False
+    if input_path is None:
+        # create a temporary text input file
+        with tempfile.NamedTemporaryFile(mode="w", delete=False, encoding="utf-8", suffix=".txt") as fh:
+            fh.write(input_text or "")
+            input_path = fh.name
+            created_temp = True
 
     cmd = cmd_template.replace("{input_file}", input_path)
     start = datetime.datetime.utcnow()
@@ -160,6 +166,7 @@ def run_single(cmd_template: str, input_text: str, timeout: int | None = None, r
         "stdout_snippet": stdout.replace("\n", " ") if stdout else "",
         "stderr_snippet": stderr.replace("\n", " ") if stderr else "",
         "input_path": input_path,
+        "created_temp": created_temp,
         "proc_metrics": json.dumps(proc_metrics, ensure_ascii=False) if proc_metrics is not None else "",
     }
 
@@ -186,9 +193,9 @@ def main(argv: list[str] | None = None) -> None:
     p.add_argument("--proc-metrics", action="store_true", help="Measure process CPU/memory for local runs (requires psutil).")
     p.add_argument("--keep-inputs", action="store_true", help="If set, keep generated input files under logs/inputs/ for debugging")
     p.add_argument("--mode", choices=["local", "api"], default="local", help="Run local command template (default) or call backend API endpoints")
-    p.add_argument("--input-mode", choices=["text", "youtube"], default="text", help="When --mode api: use text input (generate random text) or youtube url")
     p.add_argument("--youtube-url", type=str, default="https://www.youtube.com/watch?v=dQw4w9WgXcQ", help="YouTube URL to use when input-mode is youtube")
     p.add_argument("--api-base", type=str, default="http://127.0.0.1:8000", help="Base URL of the backend API when --mode api is used")
+    p.add_argument("--input-mode", choices=["text", "youtube", "audio", "video"], default="text", help="When --mode api: use text input (generate random text), youtube url, audio or video file")
     args = p.parse_args(argv)
 
     if args.mode == "local" and not args.cmd:
@@ -233,52 +240,100 @@ def main(argv: list[str] | None = None) -> None:
         if args.mode == "local":
             # run local command; optionally record process metrics
             print(f"  Mode=local. Running command template: {args.cmd}")
-            result = run_single(args.cmd, txt, timeout=args.timeout, record_proc_metrics=args.proc_metrics)
-            print(f"  Command finished: rc={result.get('exit_code')} duration={result.get('duration_seconds'):.3f}s")
+            if args.input_mode in ("audio", "video"):
+                base = Path(__file__).resolve().parent
+                fname = base / "utils" / ("videoplayback.m4a" if args.input_mode == "audio" else "videoplayback.mp4")
+                if not fname.exists():
+                    print(f"  ERROR: input file not found: {fname}", file=sys.stderr)
+                    result = {
+                        "timestamp_utc": datetime.datetime.utcnow().isoformat(),
+                        "exit_code": -1,
+                        "duration_seconds": 0.0,
+                        "stdout_snippet": "",
+                        "stderr_snippet": f"input file not found: {fname}",
+                        "input_path": str(fname),
+                        "created_temp": False,
+                    }
+                else:
+                    result = run_single(args.cmd, None, timeout=args.timeout, record_proc_metrics=args.proc_metrics, input_path=str(fname))
+                    print(f"  Command finished: rc={result.get('exit_code')} duration={result.get('duration_seconds'):.3f}s")
+            else:
+                result = run_single(args.cmd, txt, timeout=args.timeout, record_proc_metrics=args.proc_metrics)
+                print(f"  Command finished: rc={result.get('exit_code')} duration={result.get('duration_seconds'):.3f}s")
         else:
             # API mode: call backend endpoints instead of running a local command
             def run_api_call(api_base: str, input_mode: str, text_val: str, youtube_url: str, timeout_sec: int, request_id: str) -> dict:
                 start = datetime.datetime.utcnow()
+                rc = -1
+                stdout = ""
+                stderr = ""
+                input_path = ""
+                try:
+                    import requests
+                except Exception:
+                    requests = None
+
                 try:
                     if input_mode == "text":
                         url = api_base.rstrip("/") + "/generate_from_text/"
-                        payload = {"text": text_val}
-                    else:
-                        url = api_base.rstrip("/") + "/transcribe_youtube/"
-                        payload = {"url": youtube_url}
-                    # include request_id so the backend can correlate logs
-                    payload["request_id"] = request_id
-
-                    try:
-                        import requests
-                    except Exception:
-                        requests = None
-
-                    if requests is not None:
-                        resp = requests.post(url, json=payload, timeout=timeout_sec)
-                        rc = 0 if resp.status_code < 400 else resp.status_code
-                        stdout = resp.text
-                        stderr = ""
-                    else:
-                        import urllib.request, urllib.error
-                        data = json.dumps(payload).encode("utf-8")
-                        req = urllib.request.Request(url, data=data, headers={"Content-Type": "application/json"})
-                        try:
+                        payload = {"text": text_val, "request_id": request_id}
+                        if requests is not None:
+                            r = requests.post(url, json=payload, timeout=timeout_sec)
+                            rc = 0 if r.status_code < 400 else r.status_code
+                            stdout = r.text
+                        else:
+                            import urllib.request, urllib.error
+                            data = json.dumps(payload).encode("utf-8")
+                            req = urllib.request.Request(url, data=data, headers={"Content-Type": "application/json"})
                             with urllib.request.urlopen(req, timeout=timeout_sec) as resp:
                                 stdout = resp.read().decode("utf-8")
                                 rc = 0
-                                stderr = ""
-                        except urllib.error.HTTPError as he:
-                            try:
-                                stdout = he.read().decode("utf-8")
-                            except Exception:
-                                stdout = ""
-                            rc = he.code
-                            stderr = str(he)
+                    elif input_mode == "youtube":
+                        url = api_base.rstrip("/") + "/transcribe_youtube/"
+                        payload = {"url": youtube_url, "request_id": request_id}
+                        if requests is not None:
+                            r = requests.post(url, json=payload, timeout=timeout_sec)
+                            rc = 0 if r.status_code < 400 else r.status_code
+                            stdout = r.text
+                        else:
+                            import urllib.request, urllib.error
+                            data = json.dumps(payload).encode("utf-8")
+                            req = urllib.request.Request(url, data=data, headers={"Content-Type": "application/json"})
+                            with urllib.request.urlopen(req, timeout=timeout_sec) as resp:
+                                stdout = resp.read().decode("utf-8")
+                                rc = 0
+                    elif input_mode in ("audio", "video"):
+                        base = Path(__file__).resolve().parent
+                        fname = base / "utils" / ("videoplayback.m4a" if input_mode == "audio" else "videoplayback.mp4")
+                        input_path = str(fname)
+                        if not fname.exists():
+                            rc = -1
+                            stderr = f"file not found: {fname}"
+                        else:
+                            url = api_base.rstrip("/") + "/process_video/"
+                            if requests is None:
+                                rc = -1
+                                stderr = "requests library required for file upload"
+                            else:
+                                with open(fname, "rb") as fh:
+                                    files = {"file": (fname.name, fh, "audio/m4a" if input_mode == "audio" else "video/mp4")}
+                                    data = {"request_id": request_id}
+                                    r = requests.post(url, files=files, data=data, timeout=timeout_sec)
+                                    # if Spanish-localized endpoint exists, try fallback
+                                    if r.status_code >= 400:
+                                        try:
+                                            url2 = api_base.rstrip("/") + "/procesar_video/"
+                                            r2 = requests.post(url2, files=files, data=data, timeout=timeout_sec)
+                                            r = r2
+                                        except Exception:
+                                            pass
+                                    rc = 0 if r.status_code < 400 else r.status_code
+                                    stdout = r.text
                 except Exception as e:
                     rc = -1
                     stdout = ""
                     stderr = str(e)
+
                 end = datetime.datetime.utcnow()
                 duration = (end - start).total_seconds()
                 return {
@@ -287,7 +342,7 @@ def main(argv: list[str] | None = None) -> None:
                     "duration_seconds": duration,
                     "stdout_snippet": stdout.replace("\n", " ") if stdout else "",
                     "stderr_snippet": stderr.replace("\n", " ") if stderr else "",
-                    "input_path": "",
+                    "input_path": input_path,
                     "request_id": request_id,
                 }
 
@@ -306,26 +361,34 @@ def main(argv: list[str] | None = None) -> None:
             inputs_dir.mkdir(parents=True, exist_ok=True)
             target = inputs_dir / f"input_run_{int(time.time())}_{i}.txt"
             try:
-                if args.mode == "local":
-                    Path(result["input_path"]).replace(target)
-                    kept_input = str(target)
+                # If the run produced or referenced an input file, try to copy it
+                ip = result.get("input_path")
+                if ip:
+                    try:
+                        import shutil
+                        shutil.copy(ip, target)
+                        kept_input = str(target)
+                    except Exception:
+                        # fallback: if local run, try atomic replace; else write text
+                        try:
+                            if args.mode == "local":
+                                Path(ip).replace(target)
+                                kept_input = str(target)
+                            else:
+                                target.write_text(txt, encoding="utf-8")
+                                kept_input = str(target)
+                        except Exception:
+                            kept_input = ip
                 else:
-                    target.write_text(txt, encoding="utf-8")
+                    # no input file recorded; write the text used for the run
+                    target.write_text(txt or "", encoding="utf-8")
                     kept_input = str(target)
             except Exception:
-                try:
-                    import shutil
-                    if args.mode == "local":
-                        shutil.copy(result["input_path"], target)
-                        kept_input = str(target)
-                    else:
-                        target.write_text(txt, encoding="utf-8")
-                        kept_input = str(target)
-                except Exception:
-                    kept_input = result.get("input_path", "")
+                kept_input = result.get("input_path", "")
         else:
+            # cleanup only temporary inputs we created locally
             try:
-                if args.mode == "local":
+                if args.mode == "local" and result.get("created_temp"):
                     Path(result["input_path"]).unlink()
             except Exception:
                 pass
