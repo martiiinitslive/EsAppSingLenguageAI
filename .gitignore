@@ -23,6 +23,7 @@ __pycache__/
 **/descartado/
 **/.vscode/
 **/output/
+app-back/logs/*.txt
 
 app-front\node_modules/
 
